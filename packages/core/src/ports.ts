@@ -33,3 +33,8 @@ export type ServiceHealthRepository = {
 export type DiagnosticsRepository = {
   inspect: () => DatabaseDiagnostics;
 };
+
+export type SettingsRepository = {
+  getSetting: (key: string) => unknown;
+  setSetting: (key: string, value: unknown) => void;
+};

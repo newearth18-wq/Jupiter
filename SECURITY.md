@@ -13,6 +13,6 @@
 
 Do not open a public issue containing a vulnerability, secret, or user data. Share a minimal sanitized reproduction with the repository owner through their private security channel.
 
-## SET 1 boundary
+## SET 2 boundary
 
-SET 1 contains no credential collection, external network integration, plugin execution, or arbitrary user-file access. The renderer can send only strict, versioned Core requests through fixed preload methods. Main authenticates the sender, Core authorizes the actor/capability pair, and audit metadata is sanitized before SQLite persistence. Later capabilities remain unavailable.
+SET 2 contains no credential collection, external network integration, plugin execution, or arbitrary user-file access. UI preferences cross the existing fixed preload method as strict Core capabilities and contain no secrets. Permission and identity dialogs are truthful unavailable shells; they cannot grant authority or collect identity data. The Windows notification bridge reports unavailable and does not simulate native delivery.

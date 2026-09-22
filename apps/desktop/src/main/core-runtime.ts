@@ -1,9 +1,11 @@
 import { join } from 'node:path';
-import type {
-  Actor,
-  DiagnosticsSnapshot,
-  DomainEvent,
-  RpcResponseEnvelope,
+import {
+  WindowStateSchema,
+  type Actor,
+  type DiagnosticsSnapshot,
+  type DomainEvent,
+  type RpcResponseEnvelope,
+  type WindowState,
 } from '@jupiter/contracts';
 import { JupiterCore, type DomainEventListener } from '@jupiter/core';
 import { JupiterDatabase } from '@jupiter/database';
@@ -27,6 +29,7 @@ export class DesktopCoreRuntime {
       auditRepository: this.#database,
       serviceHealthRepository: this.#database,
       diagnosticsRepository: this.#database,
+      settingsRepository: this.#database,
     });
     this.#core.registerService({
       serviceId: 'local-coordinator',
@@ -64,6 +67,15 @@ export class DesktopCoreRuntime {
 
   getDiagnostics(): DiagnosticsSnapshot {
     return this.#core.getDiagnostics();
+  }
+
+  getWindowState(): WindowState | undefined {
+    const parsed = WindowStateSchema.safeParse(this.#database.getSetting('ui.window-state'));
+    return parsed.success ? parsed.data : undefined;
+  }
+
+  saveWindowState(state: WindowState): void {
+    this.#database.setSetting('ui.window-state', WindowStateSchema.parse(state));
   }
 
   async shutdown(): Promise<void> {

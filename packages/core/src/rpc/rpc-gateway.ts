@@ -21,6 +21,8 @@ const CAPABILITIES: Readonly<Record<RpcRequestName, string>> = {
   'diagnostics.get': 'diagnostics.read',
   'events.replay': 'events.read',
   'core.health.refresh': 'core.health.refresh',
+  'ui.preferences.get': 'ui.preferences.read',
+  'ui.preferences.update': 'ui.preferences.write',
 };
 
 export class RpcGateway {

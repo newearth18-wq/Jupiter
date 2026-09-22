@@ -1,15 +1,16 @@
-# Definition of done — SET 1
+# Definition of done — SET 2
 
-SET 1 is done only when:
+SET 2 is done only when:
 
-- the complete SET 0 verification remains green;
-- a clean frozen-lockfile install succeeds;
-- lint, strict type checking, unit tests, integration tests, production build, and package validation pass;
-- valid IPC is correlated and malformed, unknown, or unauthorized input is rejected;
-- the event stream is durable, ordered per Mission, and reconnects without duplicate replay;
-- new and previous SQLite fixtures migrate, interrupted transactions roll back, and integrity remains valid;
-- a failed service is visible in diagnostics without crashing the Electron app;
-- the running renderer has no Node, arbitrary file, or credential API;
-- the secret scan passes and logs/audit data remain sanitized;
-- no SET 2 or later feature is represented as available;
+- the full SET 1 verification remains green;
+- all twelve destinations render in a real Electron renderer;
+- refresh preserves the selected view and typed UI/window preferences persist in SQLite;
+- English and Thai switch without restart and Thai text is not clipped;
+- keyboard navigation reaches controls, tabs use roving focus, and modal focus is trapped/restored;
+- Reduce Motion, Static Avatar, Hide Avatar, compact mode, and text scaling are functional;
+- layout has no horizontal overflow at the 1366×768/200% equivalent viewport;
+- Core and startup failures are represented truthfully;
+- unfinished features are disabled and labeled `Unavailable`, `Not configured`, or `Coming later`;
+- secret scan, format, lint, strict typecheck, unit tests, integration tests, production build, packaged smoke, and package validation pass;
+- no SET 3 provider/chat backend has been started;
 - evidence and limitations are reported from actual command output.

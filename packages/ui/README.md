@@ -1,3 +1,3 @@
-# UI package
+# Jupiter UI
 
-`Coming later`. The reusable design system begins in SET 2. SET 0 contains only the runnable foundation shell.
+SET 2 reusable design-system primitives and design tokens implementing Jupiter Visual Design Lock v1. Components are presentation-only and do not bypass Core capabilities.

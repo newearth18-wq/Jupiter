@@ -3,6 +3,7 @@ import { CONTRACT_SCHEMA_VERSION, CorrelationContextSchema } from './common.js';
 import { DiagnosticsSnapshotSchema } from './diagnostics.js';
 import { ErrorEnvelopeSchema } from './errors.js';
 import { DomainEventSchema } from './events.js';
+import { UiPreferencesSchema, UiPreferencesUpdateSchema } from './ui.js';
 
 const EmptyPayloadSchema = z.object({}).strict();
 
@@ -51,11 +52,33 @@ const CoreHealthRefreshRequestSchema = z
   })
   .strict();
 
+const UiPreferencesGetRequestSchema = z
+  .object({
+    schemaVersion: z.literal(CONTRACT_SCHEMA_VERSION),
+    kind: z.literal('query'),
+    name: z.literal('ui.preferences.get'),
+    context: CorrelationContextSchema,
+    payload: EmptyPayloadSchema,
+  })
+  .strict();
+
+const UiPreferencesUpdateRequestSchema = z
+  .object({
+    schemaVersion: z.literal(CONTRACT_SCHEMA_VERSION),
+    kind: z.literal('command'),
+    name: z.literal('ui.preferences.update'),
+    context: CorrelationContextSchema,
+    payload: UiPreferencesUpdateSchema,
+  })
+  .strict();
+
 export const RpcRequestEnvelopeSchema = z.discriminatedUnion('name', [
   CorePingRequestSchema,
   DiagnosticsGetRequestSchema,
   EventsReplayRequestSchema,
   CoreHealthRefreshRequestSchema,
+  UiPreferencesGetRequestSchema,
+  UiPreferencesUpdateRequestSchema,
 ]);
 
 export const RpcRequestNameSchema = z.enum([
@@ -63,6 +86,8 @@ export const RpcRequestNameSchema = z.enum([
   'diagnostics.get',
   'events.replay',
   'core.health.refresh',
+  'ui.preferences.get',
+  'ui.preferences.update',
 ]);
 
 export const RpcSuccessEnvelopeSchema = z
@@ -126,6 +151,9 @@ export function parseRpcSuccessData(
       return DiagnosticsSnapshotSchema.parse(data);
     case 'events.replay':
       return EventsReplayResultSchema.parse(data);
+    case 'ui.preferences.get':
+    case 'ui.preferences.update':
+      return UiPreferencesSchema.parse(data);
   }
 }
 

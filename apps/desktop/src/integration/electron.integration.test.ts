@@ -21,6 +21,19 @@ type SmokeEvidence = {
     hasCredentialApi: string;
     invalidRejected: boolean;
     eventCursor: number;
+    screens: {
+      id: string;
+      rendered: boolean;
+      title: string | null;
+      availability: string | null;
+    }[];
+    thaiText: { language: string; title: string | null; fits: boolean; lineHeight: string | null };
+    focus: { trapped: boolean; restored: boolean };
+    motion: { setting: string | null; animationName: string | null };
+    tabKeyboard: { selected: string | null; focused: string | null };
+    shortcutDestination: string | null;
+    keyboard: { interactiveCount: number; unreachableCount: number };
+    selectedBeforeReload: boolean;
     ping: { status: string; requestId: string; data?: { message: string } };
     diagnostics: {
       status: string;
@@ -31,7 +44,24 @@ type SmokeEvidence = {
     };
     denied: { status: string; error?: { category: string } };
   };
-  reconnection: { cursor: number; replayedEventCount: number };
+  reconnection: {
+    cursor: number;
+    replayedEventCount: number;
+    currentView: string | null;
+    language: string;
+    motion: string | null;
+    theme: string | null;
+  };
+  responsive: {
+    innerWidth: number;
+    innerHeight: number;
+    documentScrollWidth: number;
+    horizontalOverflow: boolean;
+    navigationCount: number;
+    screenVisible: boolean;
+  };
+  keyboardNavigation: { activeNavigation: string | null };
+  persistedWindowState: { width: number; height: number; maximized: boolean };
   webPreferences: {
     contextIsolation: boolean;
     nodeIntegration: boolean;
@@ -131,6 +161,59 @@ describe('packaged-shape Electron shell', () => {
     expect(evidence.bootstrapState.runtime.status).toBe('degraded');
     expect(evidence.bootstrapState.runtime.startupError?.recoverable).toBe(true);
     expect(evidence.renderer.status).toBeTruthy();
+  });
+
+  it('renders the complete localized accessible shell and persists UI state', async () => {
+    const evidence = await runElectron({});
+    expect(evidence.renderer.screens).toHaveLength(12);
+    expect(evidence.renderer.screens.every((screen) => screen.rendered && screen.title)).toBe(true);
+    const deferred = evidence.renderer.screens.filter((screen) =>
+      [
+        'chat',
+        'missions',
+        'skills',
+        'memory',
+        'files',
+        'automations',
+        'models',
+        'devices',
+        'plugins',
+      ].includes(screen.id),
+    );
+    expect(deferred.every((screen) => screen.availability !== null)).toBe(true);
+    expect(evidence.renderer.thaiText).toMatchObject({
+      language: 'th',
+      title: 'การตั้งค่า',
+      fits: true,
+    });
+    expect(evidence.renderer.focus).toEqual({ trapped: true, restored: true });
+    expect(evidence.renderer.motion).toEqual({ setting: 'reduced', animationName: 'none' });
+    expect(evidence.renderer.tabKeyboard).toEqual({
+      selected: 'accessibility',
+      focused: 'accessibility',
+    });
+    expect(evidence.renderer.shortcutDestination).toBe('settings');
+    expect(evidence.renderer.keyboard.interactiveCount).toBeGreaterThan(12);
+    expect(evidence.renderer.keyboard.unreachableCount).toBe(0);
+    expect(evidence.renderer.selectedBeforeReload).toBe(true);
+    expect(evidence.reconnection).toMatchObject({
+      replayedEventCount: 0,
+      currentView: 'plugins',
+      language: 'th',
+      motion: 'reduced',
+      theme: 'midnight',
+    });
+    expect(evidence.responsive.innerWidth).toBeGreaterThanOrEqual(600);
+    expect(evidence.responsive.innerHeight).toBeGreaterThanOrEqual(320);
+    expect(evidence.responsive.horizontalOverflow).toBe(false);
+    expect(evidence.responsive.navigationCount).toBe(12);
+    expect(evidence.responsive.screenVisible).toBe(true);
+    expect(evidence.keyboardNavigation.activeNavigation).toBe('chat');
+    expect(evidence.persistedWindowState).toMatchObject({
+      width: 683,
+      height: 384,
+      maximized: false,
+    });
   });
 
   it('isolates a Core service crash and exposes degraded health without exiting', async () => {

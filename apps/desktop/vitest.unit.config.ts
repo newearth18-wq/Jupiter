@@ -8,6 +8,7 @@ export default defineConfig({
         new URL('../../packages/contracts/src/index.ts', import.meta.url),
       ),
       '@jupiter/core': fileURLToPath(new URL('../../packages/core/src/index.ts', import.meta.url)),
+      '@jupiter/ui': fileURLToPath(new URL('../../packages/ui/src/index.ts', import.meta.url)),
     },
   },
   test: {

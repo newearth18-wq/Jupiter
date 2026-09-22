@@ -11,8 +11,8 @@ import {
   type DomainEvent,
 } from '@jupiter/contracts';
 import { StructuredLogger } from '@jupiter/core';
-import { app, BrowserWindow, ipcMain, session } from 'electron';
-import type { IpcMainInvokeEvent, WebPreferences } from 'electron';
+import { app, BrowserWindow, ipcMain, screen, session } from 'electron';
+import type { IpcMainInvokeEvent, Rectangle, WebPreferences } from 'electron';
 import { createBootstrapState } from './bootstrap.js';
 import { DesktopCoreRuntime } from './core-runtime.js';
 
@@ -31,6 +31,7 @@ let coreRuntime: DesktopCoreRuntime | undefined;
 let unsubscribeCoreEvents: (() => void) | undefined;
 let normalShutdownStarted = false;
 const activeRequests = new Map<string, AbortController>();
+let windowStateTimer: NodeJS.Timeout | undefined;
 
 const secureWebPreferences = {
   contextIsolation: true,
@@ -133,14 +134,23 @@ function applySessionSecurity(): void {
 }
 
 async function createWindow(): Promise<void> {
+  const savedWindowState = coreRuntime?.getWindowState();
+  const savedBounds = savedWindowState ? visibleWindowBounds(savedWindowState) : undefined;
   mainWindow = new BrowserWindow({
-    width: 1120,
-    height: 720,
-    minWidth: 900,
-    minHeight: 600,
+    width: savedBounds?.width ?? 1180,
+    height: savedBounds?.height ?? 760,
+    ...(savedBounds === undefined ? {} : { x: savedBounds.x, y: savedBounds.y }),
+    minWidth: 600,
+    minHeight: 320,
     show: process.env.JUPITER_SMOKE_TEST !== '1',
     backgroundColor: '#090D14',
     title: 'Jupiter',
+    titleBarStyle: 'hidden',
+    titleBarOverlay: {
+      color: '#090D14',
+      symbolColor: '#EDF7FF',
+      height: 42,
+    },
     webPreferences: {
       preload: join(__dirname, '../preload/index.cjs'),
       ...secureWebPreferences,
@@ -148,6 +158,16 @@ async function createWindow(): Promise<void> {
   });
 
   mainWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+  if (savedWindowState?.maximized === true) mainWindow.maximize();
+  const scheduleWindowStateSave = (): void => {
+    if (windowStateTimer) clearTimeout(windowStateTimer);
+    windowStateTimer = setTimeout(saveWindowState, 250);
+  };
+  mainWindow.on('resize', scheduleWindowStateSave);
+  mainWindow.on('move', scheduleWindowStateSave);
+  mainWindow.on('maximize', scheduleWindowStateSave);
+  mainWindow.on('unmaximize', scheduleWindowStateSave);
+  mainWindow.on('close', saveWindowState);
   mainWindow.webContents.on('preload-error', (_event, preloadPath, error) => {
     logger?.log('error', 'renderer.preload.failed', error.message, randomUUID(), {
       preload: preloadPath,
@@ -166,6 +186,40 @@ async function createWindow(): Promise<void> {
   }
 
   if (process.env.JUPITER_SMOKE_TEST === '1') await writeSmokeEvidence(mainWindow);
+}
+
+function visibleWindowBounds(saved: {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}): Rectangle | undefined {
+  const matchingDisplay = screen.getDisplayMatching(saved);
+  const area = matchingDisplay.workArea;
+  const intersectionWidth = Math.max(
+    0,
+    Math.min(saved.x + saved.width, area.x + area.width) - Math.max(saved.x, area.x),
+  );
+  const intersectionHeight = Math.max(
+    0,
+    Math.min(saved.y + saved.height, area.y + area.height) - Math.max(saved.y, area.y),
+  );
+  if (intersectionWidth < 120 || intersectionHeight < 80) return undefined;
+  return {
+    x: Math.max(area.x, Math.min(saved.x, area.x + area.width - 120)),
+    y: Math.max(area.y, Math.min(saved.y, area.y + area.height - 80)),
+    width: Math.min(saved.width, area.width),
+    height: Math.min(saved.height, area.height),
+  };
+}
+
+function saveWindowState(): void {
+  if (!mainWindow || mainWindow.isDestroyed() || !coreRuntime) return;
+  const bounds = mainWindow.getNormalBounds();
+  coreRuntime.saveWindowState({
+    ...bounds,
+    maximized: mainWindow.isMaximized(),
+  });
 }
 
 function broadcastDomainEvent(event: DomainEvent): void {
@@ -217,6 +271,118 @@ async function writeSmokeEvidence(window: BrowserWindow): Promise<void> {
           } catch {
             invalidRejected = true;
           }
+          const wait = (duration) => new Promise((done) => setTimeout(done, duration));
+          const screenIds = [
+            'home', 'chat', 'missions', 'skills', 'memory', 'files',
+            'automations', 'models', 'devices', 'plugins', 'settings', 'diagnostics'
+          ];
+          const screens = [];
+          for (const screenId of screenIds) {
+            location.hash = '#/' + screenId;
+            await wait(80);
+            screens.push({
+              id: screenId,
+              rendered: document.querySelector('[data-screen="' + screenId + '"]') !== null,
+              title: document.querySelector('[data-testid="screen-title"]')?.textContent ?? null,
+              availability: document.querySelector('[data-testid="availability-state"]')?.getAttribute('data-availability') ?? null
+            });
+          }
+
+          location.hash = '#/settings';
+          await wait(80);
+          const languageSelect = document.querySelector('[data-testid="language-select"]');
+          if (languageSelect instanceof HTMLSelectElement) {
+            languageSelect.value = 'th';
+            languageSelect.dispatchEvent(new Event('change', { bubbles: true }));
+          }
+          const languageStarted = Date.now();
+          while (document.documentElement.lang !== 'th' && Date.now() - languageStarted < 3000) {
+            await wait(50);
+          }
+          const thaiTitle = document.querySelector('[data-testid="screen-title"]');
+          const thaiText = {
+            language: document.documentElement.lang,
+            title: thaiTitle?.textContent ?? null,
+            fits: thaiTitle instanceof HTMLElement
+              ? thaiTitle.scrollHeight <= thaiTitle.clientHeight + 1
+              : false,
+            lineHeight: thaiTitle instanceof HTMLElement
+              ? getComputedStyle(thaiTitle).lineHeight
+              : null
+          };
+          const themeSelect = [...document.querySelectorAll('select')].find((element) =>
+            [...element.options].some((option) => option.value === 'midnight')
+          );
+          if (themeSelect instanceof HTMLSelectElement) {
+            themeSelect.value = 'midnight';
+            themeSelect.dispatchEvent(new Event('change', { bubbles: true }));
+          }
+          const appearanceTab = document.querySelector('[data-tab-id="appearance"]');
+          if (appearanceTab instanceof HTMLElement) {
+            appearanceTab.focus();
+            appearanceTab.dispatchEvent(new KeyboardEvent('keydown', {
+              key: 'ArrowRight', bubbles: true
+            }));
+          }
+          await wait(40);
+          const tabKeyboard = {
+            selected: document.querySelector('[role="tab"][aria-selected="true"]')?.getAttribute('data-tab-id') ?? null,
+            focused: document.activeElement?.getAttribute('data-tab-id') ?? null
+          };
+          const safetyTab = document.querySelector('[data-tab-id="safety"]');
+          if (safetyTab instanceof HTMLElement) safetyTab.click();
+          await wait(40);
+
+          const permissionTrigger = document.querySelector('[data-testid="permission-details"]');
+          if (permissionTrigger instanceof HTMLElement) {
+            permissionTrigger.focus();
+            permissionTrigger.click();
+          }
+          await wait(60);
+          const dialog = document.querySelector('[role="dialog"]');
+          const dialogButton = dialog?.querySelector('button');
+          if (dialogButton instanceof HTMLElement) dialogButton.focus();
+          document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', bubbles: true }));
+          const focusTrapped = dialog?.contains(document.activeElement) ?? false;
+          document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+          await wait(60);
+          const focusRestored = document.activeElement === permissionTrigger;
+
+          const accessibilityTab = document.querySelector('[data-tab-id="accessibility"]');
+          if (accessibilityTab instanceof HTMLElement) accessibilityTab.click();
+          await wait(40);
+          const reduceMotion = document.querySelector('[data-testid="reduce-motion-toggle"]');
+          if (reduceMotion instanceof HTMLElement) reduceMotion.click();
+          const motionStarted = Date.now();
+          while (document.documentElement.dataset.motion !== 'reduced' && Date.now() - motionStarted < 3000) {
+            await wait(50);
+          }
+          location.hash = '#/home';
+          await wait(80);
+          const orbit = document.querySelector('.avatar-orbit');
+          const motion = {
+            setting: document.documentElement.dataset.motion ?? null,
+            animationName: orbit instanceof HTMLElement ? getComputedStyle(orbit).animationName : null
+          };
+          window.dispatchEvent(new KeyboardEvent('keydown', {
+            key: ',', ctrlKey: true, bubbles: true
+          }));
+          await wait(80);
+          const shortcutDestination = document.querySelector('[data-screen]')?.getAttribute('data-screen') ?? null;
+
+          const interactive = [...document.querySelectorAll('a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled])')];
+          const keyboard = {
+            interactiveCount: interactive.length,
+            unreachableCount: interactive.filter((element) =>
+              element instanceof HTMLElement &&
+              element.tabIndex < 0 &&
+              element.getAttribute('role') !== 'tab'
+            ).length
+          };
+
+          location.hash = '#/plugins';
+          await wait(250);
+          const selectedBeforeReload = document.querySelector('[data-screen="plugins"]') !== null;
           resolve({
             title: document.title,
             status,
@@ -229,7 +395,15 @@ async function writeSmokeEvidence(window: BrowserWindow): Promise<void> {
             diagnostics,
             denied,
             invalidRejected,
-            eventCursor
+            eventCursor,
+            screens,
+            thaiText,
+            focus: { trapped: focusTrapped, restored: focusRestored },
+            motion,
+            tabKeyboard,
+            shortcutDestination,
+            keyboard,
+            selectedBeforeReload
           });
         } else {
           setTimeout(inspect, 50);
@@ -263,7 +437,11 @@ async function writeSmokeEvidence(window: BrowserWindow): Promise<void> {
           });
           resolve({
             cursor,
-            replayedEventCount: response.status === 'success' ? response.data.events.length : -1
+            replayedEventCount: response.status === 'success' ? response.data.events.length : -1,
+            currentView: document.querySelector('[data-screen]')?.getAttribute('data-screen') ?? null,
+            language: document.documentElement.lang,
+            motion: document.documentElement.dataset.motion ?? null,
+            theme: document.documentElement.dataset.theme ?? null
           });
         } else {
           setTimeout(inspect, 50);
@@ -272,11 +450,56 @@ async function writeSmokeEvidence(window: BrowserWindow): Promise<void> {
       inspect();
     });
   `);
+  window.setContentSize(683, 384);
+  saveWindowState();
+  const responsive: unknown = await window.webContents.executeJavaScript(`({
+    innerWidth,
+    innerHeight,
+    documentScrollWidth: document.documentElement.scrollWidth,
+    horizontalOverflow: document.documentElement.scrollWidth > innerWidth,
+    navigationCount: document.querySelectorAll('[data-nav-id]').length,
+    screenVisible: document.querySelector('[data-screen]') !== null
+  })`);
+
+  await window.webContents.executeJavaScript(
+    `document.querySelector('[data-nav-id="home"]')?.focus()`,
+  );
+  window.webContents.sendInputEvent({ type: 'keyDown', keyCode: 'Tab' });
+  window.webContents.sendInputEvent({ type: 'keyUp', keyCode: 'Tab' });
+  const keyboardNavigation: unknown = await window.webContents
+    .executeJavaScript(`new Promise((resolve) => {
+    setTimeout(() => resolve({
+      activeNavigation: document.activeElement?.getAttribute('data-nav-id') ?? null
+    }), 50);
+  })`);
+  const screenshotPath = process.env.JUPITER_SMOKE_SCREENSHOT_PATH;
+  if (screenshotPath) {
+    window.setContentSize(1180, 760);
+    await window.webContents.executeJavaScript(`new Promise((resolve) => {
+      location.hash = '#/home';
+      const startedAt = Date.now();
+      const waitForHome = () => {
+        const activeScreen = document.querySelector('[data-screen]')?.getAttribute('data-screen');
+        if (activeScreen === 'home' || Date.now() - startedAt >= 3000) {
+          setTimeout(resolve, 250);
+          return;
+        }
+        setTimeout(waitForHome, 50);
+      };
+      waitForHome();
+    })`);
+    const screenshot = await window.webContents.capturePage();
+    mkdirSync(dirname(screenshotPath), { recursive: true });
+    writeFileSync(screenshotPath, screenshot.toPNG());
+  }
   const evidence = {
     timestamp: new Date().toISOString(),
     bootstrapState,
     renderer,
     reconnection,
+    responsive,
+    keyboardNavigation,
+    persistedWindowState: coreRuntime?.getWindowState(),
     webPreferences: {
       contextIsolation: secureWebPreferences.contextIsolation,
       nodeIntegration: secureWebPreferences.nodeIntegration,

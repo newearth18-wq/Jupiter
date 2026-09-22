@@ -2,6 +2,7 @@ import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { App } from './App.js';
 import { ErrorBoundary } from './ErrorBoundary.js';
+import '@jupiter/ui-tokens';
 import './styles.css';
 
 const root = document.getElementById('root');

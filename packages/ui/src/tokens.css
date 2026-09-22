@@ -1,0 +1,65 @@
+:root {
+  --j-color-graphite: #090d14;
+  --j-color-midnight: #0d1626;
+  --j-color-panel: #111c2e;
+  --j-color-panel-raised: #16243a;
+  --j-color-cyan: #48d9ff;
+  --j-color-ice: #a7edff;
+  --j-color-violet: #8b7cff;
+  --j-color-success: #57e3a1;
+  --j-color-warning: #f1b85b;
+  --j-color-error: #ff6b78;
+  --j-color-text: #edf7ff;
+  --j-color-text-muted: #9db1c7;
+  --j-color-border: rgb(157 177 199 / 16%);
+  --j-color-focus: #a7edff;
+
+  --j-space-1: 0.25rem;
+  --j-space-2: 0.5rem;
+  --j-space-3: 0.75rem;
+  --j-space-4: 1rem;
+  --j-space-5: 1.25rem;
+  --j-space-6: 1.5rem;
+  --j-space-8: 2rem;
+  --j-space-10: 2.5rem;
+  --j-space-12: 3rem;
+
+  --j-radius-sm: 0.5rem;
+  --j-radius-md: 0.75rem;
+  --j-radius-lg: 1rem;
+  --j-radius-xl: 1.5rem;
+  --j-radius-round: 999px;
+
+  --j-font-sans: 'Noto Sans Thai', Inter, 'Segoe UI', system-ui, sans-serif;
+  --j-font-size-xs: 0.75rem;
+  --j-font-size-sm: 0.875rem;
+  --j-font-size-md: 1rem;
+  --j-font-size-lg: 1.125rem;
+  --j-font-size-xl: 1.5rem;
+  --j-font-size-display: clamp(1.75rem, 4vw, 3.25rem);
+  --j-line-thai: 1.65;
+
+  --j-shadow-panel: 0 1rem 3rem rgb(0 0 0 / 24%);
+  --j-glow-cyan: 0 0 1.5rem rgb(72 217 255 / 24%);
+  --j-motion-fast: 140ms;
+  --j-motion-normal: 240ms;
+  --j-motion-orbit: 18s;
+  --j-ease-standard: cubic-bezier(0.2, 0, 0, 1);
+
+  --j-z-shell: 10;
+  --j-z-toast: 80;
+  --j-z-dialog: 100;
+}
+
+:root[data-theme='midnight'] {
+  --j-color-graphite: #070b12;
+  --j-color-midnight: #0a1425;
+  --j-color-panel: #0e1b30;
+  --j-color-panel-raised: #142642;
+}
+
+:root[data-motion='reduced'] {
+  --j-motion-fast: 0.01ms;
+  --j-motion-normal: 0.01ms;
+  --j-motion-orbit: 0.01ms;
+}

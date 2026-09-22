@@ -10,6 +10,8 @@ const aliases = {
   '@jupiter/database': fileURLToPath(
     new URL('../../packages/database/src/index.ts', import.meta.url),
   ),
+  '@jupiter/ui': fileURLToPath(new URL('../../packages/ui/src/index.ts', import.meta.url)),
+  '@jupiter/ui-tokens': fileURLToPath(new URL('../../packages/ui/src/tokens.css', import.meta.url)),
 };
 
 export default defineConfig({

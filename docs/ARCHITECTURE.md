@@ -1,12 +1,12 @@
-# SET 0–1 architecture
+# SET 0–2 architecture
 
 ## Trust boundaries
 
 ```text
-React renderer (sandboxed, no Node)
+React product shell (sandboxed, no Node)
   -> frozen preload API with fixed bootstrap, RPC, cancellation, and event methods
-  -> Electron Main verifies the exact webContents and origin
-  -> central versioned schema validation
+  -> Electron Main verifies exact webContents and origin
+  -> strict versioned schema validation
   -> Jupiter Core capability dispatcher
   -> repository interfaces
   -> SQLite (WAL, foreign keys, migrations, transactions)
@@ -16,30 +16,33 @@ The renderer cannot import Node.js, Electron, filesystem, shell, or credential A
 
 ## Repository boundaries
 
-- `apps/desktop`: Electron Main host gateway, narrow preload, React renderer, real diagnostics, and Electron smoke tests.
-- `packages/contracts`: strict versioned schemas for bootstrap, commands, queries, results, errors, progress, audit, health, and domain events.
-- `packages/core`: framework-independent capability dispatcher, RPC gateway, persistent event bus, service lifecycle isolation, typed errors, and structured logging.
+- `apps/desktop`: Electron Main host gateway, narrow preload, localized React shell, service-backed screens, and Electron acceptance tests.
+- `packages/contracts`: strict schemas for bootstrap, Core RPC/events, diagnostics, UI preferences, routes, and window state.
+- `packages/core`: capability dispatcher, RPC gateway, persistent event bus, service lifecycle isolation, typed errors, structured logging, and UI-preference capabilities.
 - `packages/database`: SQLite migrations and repositories for settings, ordered events, audit records, and service health.
-- `services/*`: reserved process boundaries, explicitly unavailable until their owning SET.
-- `packages/security`, `ui`, `testing`: reserved module boundaries, not later-SET implementations.
-- `plugins`: reserved for the isolated plugin work in SET 15.
+- `packages/ui`: reusable Visual Design Lock tokens and accessible primitives for buttons, surfaces, status, empty states, tabs, dialogs, and toasts.
+- `services/*`, `packages/security`, and `plugins`: reserved and unavailable until their owning SETs.
 
-## Correlation and validation
+## Product shell
 
-Every Core request carries a UUID `requestId`, actor, and timestamp, with optional Mission, execution, and cancellation identifiers. Main authenticates renderer calls as `renderer`; a payload cannot elevate itself by claiming another actor. The RPC gateway validates the complete request before dispatch, validates method-specific results, records a sanitized audit decision, and returns a typed error envelope.
+The custom Windows title-bar overlay and compact sidebar expose all twelve required destinations. Only Home, Settings, and Diagnostics have live SET 2 behavior. Other screens render localized truthful availability states. The central Jupiter form uses the locked spherical core, orbital rings, restrained particles, and service-derived operational/degraded/offline state. The Current Mission and Chat shells remain disabled because their backends are not implemented.
 
-## Events and reconnection
+## Localization and accessibility
 
-Core persists each domain event before notifying subscribers. SQLite assigns a global sequence and a transactionally allocated per-Mission stream sequence. Renderer reconnection stores only the last non-secret global cursor in `sessionStorage`, replays events after that cursor, and ignores an already-consumed sequence. Refresh smoke coverage verifies that replay does not duplicate persistent events.
+All interface copy is selected from complete English and Thai dictionaries. The document language changes immediately and Thai uses the locked font stack and expanded line height. Navigation, forms, roving-tab tabs, modal focus trapping/restoration, skip links, live toasts, focus indicators, and keyboard shortcuts use semantic browser behavior.
 
-## Persistence and recovery
+Shortcuts:
 
-SQLite uses ordered migrations, `WAL`, `foreign_keys=ON`, full synchronization, and immediate transactions. Initial tables are `settings`, `events`, `audit_log`, `schema_migrations`, and `service_health`. The database module exposes a backup hook but no user-facing backup workflow yet. Migration and rollback tests use isolated fixtures and never modify user data.
+- `Alt+1`: Home
+- `Ctrl+,`: Settings
+- `Ctrl+Shift+D`: Diagnostics
 
-## Service lifecycle and diagnostics
+Reduce Motion disables nonessential avatar animation. Static Avatar, Hide Avatar, compact mode, and 90–125% text scaling are persisted through typed Core capabilities.
 
-Services start and stop through the Core service manager. A service exception is sanitized, persisted as failed/degraded health, and emitted as a domain event without terminating unrelated services or the Electron shell. Diagnostics reports actual application/Core versions, service health, SQLite schema and safety state, record counts, integrity, and recent sanitized service errors.
+## Persistence
+
+SET 2 reuses the existing `settings` table; no schema migration is required. `ui.preferences` stores language, dark-theme variant, motion, avatar, density, text scale, and last view. Electron Main stores sanitized window bounds and maximized state under `ui.window-state`, validates them, and rejects off-screen restoration. Event cursors remain non-secret session state and prevent duplicate replay after renderer refresh.
 
 ## Deferred architecture
 
-Mission orchestration, workflows, Skills, permissions, identity, model routing, artifacts, agents, providers, plugins, and the full product shell remain unavailable. They are not represented as working and belong to later SETs.
+Mission execution, AI/chat providers, Skills, Memory, Files/Artifacts, Automations, devices, plugins, Permission Engine, Identity Engine, and native Windows notifications remain unavailable. SET 2 supplies accessible interface shells only and does not implement or simulate later-SET behavior.

@@ -72,6 +72,15 @@ importers:
 
   packages/database: {}
 
+  packages/ui:
+    dependencies:
+      react:
+        specifier: '>=19'
+        version: 19.3.0
+      react-dom:
+        specifier: '>=19'
+        version: 19.3.0(react@19.3.0)
+
 packages:
 
   '@babel/code-frame@7.29.7':

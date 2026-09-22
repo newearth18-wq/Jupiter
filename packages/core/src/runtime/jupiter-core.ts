@@ -1,7 +1,10 @@
 import { randomUUID } from 'node:crypto';
 import {
   CONTRACT_SCHEMA_VERSION,
+  DEFAULT_UI_PREFERENCES,
   DiagnosticsSnapshotSchema,
+  UiPreferencesSchema,
+  UiPreferencesUpdateSchema,
   type Actor,
   type DiagnosticsSnapshot,
   type RpcResponseEnvelope,
@@ -12,6 +15,7 @@ import type {
   AuditRepository,
   DiagnosticsRepository,
   EventStore,
+  SettingsRepository,
   ServiceHealthRepository,
 } from '../ports.js';
 import { RpcGateway } from '../rpc/rpc-gateway.js';
@@ -23,6 +27,7 @@ export type JupiterCoreDependencies = {
   auditRepository: AuditRepository;
   serviceHealthRepository: ServiceHealthRepository;
   diagnosticsRepository: DiagnosticsRepository;
+  settingsRepository: SettingsRepository;
 };
 
 export class JupiterCore {
@@ -32,6 +37,7 @@ export class JupiterCore {
   readonly #diagnosticsRepository: DiagnosticsRepository;
   readonly #dispatcher: CapabilityDispatcher;
   readonly #gateway: RpcGateway;
+  readonly #settingsRepository: SettingsRepository;
   #started = false;
 
   constructor(dependencies: JupiterCoreDependencies) {
@@ -39,6 +45,7 @@ export class JupiterCore {
     this.#events = new DomainEventBus(dependencies.eventStore);
     this.#services = new ServiceManager(dependencies.serviceHealthRepository, this.#events);
     this.#diagnosticsRepository = dependencies.diagnosticsRepository;
+    this.#settingsRepository = dependencies.settingsRepository;
     this.#dispatcher = new CapabilityDispatcher();
     this.#gateway = new RpcGateway(this.#dispatcher, dependencies.auditRepository);
     this.#registerCapabilities();
@@ -152,5 +159,38 @@ export class JupiterCore {
         return this.getDiagnostics();
       },
     });
+    this.#dispatcher.register({
+      capability: 'ui.preferences.read',
+      allowedActors: ['renderer', 'core', 'test'],
+      handler: () => this.#readUiPreferences(),
+    });
+    this.#dispatcher.register({
+      capability: 'ui.preferences.write',
+      allowedActors: ['renderer', 'core', 'test'],
+      handler: (input, context) => {
+        const update = UiPreferencesUpdateSchema.parse(input);
+        const preferences = UiPreferencesSchema.parse({
+          ...this.#readUiPreferences(),
+          ...update,
+        });
+        this.#settingsRepository.setSetting('ui.preferences', preferences);
+        this.#events.publish({
+          type: 'ui.preferences.updated',
+          correlationId: context.correlation.requestId,
+          actor: context.correlation.actor,
+          source: 'jupiter-core',
+          payload: { changed: Object.keys(update) },
+          occurredAt: new Date().toISOString(),
+        });
+        return preferences;
+      },
+    });
+  }
+
+  #readUiPreferences(): ReturnType<typeof UiPreferencesSchema.parse> {
+    const stored = UiPreferencesSchema.safeParse(
+      this.#settingsRepository.getSetting('ui.preferences'),
+    );
+    return stored.success ? stored.data : DEFAULT_UI_PREFERENCES;
   }
 }
