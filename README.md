@@ -1,8 +1,8 @@
 # Jupiter
 
-Jupiter is a Windows-first desktop AI agent. This repository currently contains **SET 0 only**: the reproducible repository foundation, secure Electron shell, delivery tooling, and quality gates.
+Jupiter is a Windows-first desktop AI agent. This repository currently contains **SET 0 and SET 1**: the reproducible delivery foundation, secure Electron shell, trusted Core coordination layer, typed IPC/event contracts, SQLite persistence, and real diagnostics.
 
-No AI, Mission, automation, browser, computer-control, plugin, voice, vision, identity, or memory feature is implemented yet. The shell labels those capabilities `Coming later` or `Not configured`.
+No AI, Mission, automation, browser, computer-control, plugin, voice, vision, identity, or memory feature is implemented yet. The shell labels those capabilities `Coming later` or `Not configured`; the SET 1 capability dispatcher does not expose them.
 
 ## Requirements
 

@@ -5,7 +5,8 @@
     "rootDir": "..",
     "types": ["node", "vitest/globals"],
     "paths": {
-      "@jupiter/contracts": ["../contracts/src/index.ts"]
+      "@jupiter/contracts": ["../contracts/src/index.ts"],
+      "@jupiter/core": ["../core/src/index.ts"]
     },
     "ignoreDeprecations": "6.0"
   },

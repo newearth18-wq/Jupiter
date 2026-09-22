@@ -1,5 +1,11 @@
-import type { BootstrapState } from '@jupiter/contracts';
-import { useCallback, useEffect, useState } from 'react';
+import {
+  DiagnosticsSnapshotSchema,
+  EventsReplayResultSchema,
+  type BootstrapState,
+  type DiagnosticsSnapshot,
+  type DomainEvent,
+} from '@jupiter/contracts';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { getCopy } from './copy.js';
 
 type View = 'home' | 'diagnostics' | 'settings';
@@ -12,17 +18,38 @@ function readView(): View {
 export function App(): React.JSX.Element {
   const strings = getCopy();
   const [state, setState] = useState<BootstrapState>();
+  const [diagnostics, setDiagnostics] = useState<DiagnosticsSnapshot>();
   const [loadError, setLoadError] = useState<string>();
+  const [diagnosticsError, setDiagnosticsError] = useState<string>();
   const [view, setView] = useState<View>(readView());
+  const eventCursor = useRef(readEventCursor());
+
+  const loadDiagnostics = useCallback(async () => {
+    try {
+      const response = await window.jupiter.request({
+        schemaVersion: 1,
+        kind: 'query',
+        name: 'diagnostics.get',
+        context: rendererContext(),
+        payload: {},
+      });
+      if (response.status === 'error') throw new Error(response.error.message);
+      setDiagnostics(DiagnosticsSnapshotSchema.parse(response.data));
+      setDiagnosticsError(undefined);
+    } catch (error) {
+      setDiagnosticsError(error instanceof Error ? error.message : 'Diagnostics are unavailable');
+    }
+  }, []);
 
   const load = useCallback(async () => {
     try {
       setLoadError(undefined);
       setState(await window.jupiter.getBootstrapState());
+      await loadDiagnostics();
     } catch (error) {
       setLoadError(error instanceof Error ? error.message : 'Unknown bootstrap error');
     }
-  }, []);
+  }, [loadDiagnostics]);
 
   useEffect(() => {
     void load();
@@ -31,6 +58,33 @@ export function App(): React.JSX.Element {
     return () => window.removeEventListener('hashchange', onHashChange);
   }, [load]);
 
+  useEffect(() => {
+    const acceptEvent = (event: DomainEvent): void => {
+      if (event.sequence <= eventCursor.current) return;
+      eventCursor.current = event.sequence;
+      writeEventCursor(event.sequence);
+      if (event.type === 'service.health.changed') void loadDiagnostics();
+    };
+    const unsubscribe = window.jupiter.onDomainEvent(acceptEvent);
+    void window.jupiter
+      .request({
+        schemaVersion: 1,
+        kind: 'query',
+        name: 'events.replay',
+        context: rendererContext(),
+        payload: { afterSequence: eventCursor.current, limit: 500 },
+      })
+      .then((response) => {
+        if (response.status === 'error') throw new Error(response.error.message);
+        const replay = EventsReplayResultSchema.parse(response.data);
+        replay.events.forEach(acceptEvent);
+      })
+      .catch((error: unknown) => {
+        setDiagnosticsError(error instanceof Error ? error.message : 'Event replay is unavailable');
+      });
+    return unsubscribe;
+  }, [loadDiagnostics]);
+
   const retry = async (): Promise<void> => {
     if (!state) return;
     try {
@@ -38,6 +92,23 @@ export function App(): React.JSX.Element {
       setLoadError(undefined);
     } catch (error) {
       setLoadError(error instanceof Error ? error.message : 'Startup retry failed');
+    }
+  };
+
+  const refreshHealth = async (): Promise<void> => {
+    try {
+      const response = await window.jupiter.request({
+        schemaVersion: 1,
+        kind: 'command',
+        name: 'core.health.refresh',
+        context: rendererContext(),
+        payload: {},
+      });
+      if (response.status === 'error') throw new Error(response.error.message);
+      setDiagnostics(DiagnosticsSnapshotSchema.parse(response.data));
+      setDiagnosticsError(undefined);
+    } catch (error) {
+      setDiagnosticsError(error instanceof Error ? error.message : 'Health refresh failed');
     }
   };
 
@@ -73,8 +144,17 @@ export function App(): React.JSX.Element {
             </button>
           </section>
         )}
-        {state && view === 'home' && <Home state={state} onRetry={retry} />}
-        {state && view === 'diagnostics' && <Diagnostics state={state} onRetry={retry} />}
+        {state && view === 'home' && (
+          <Home state={state} diagnostics={diagnostics} onRetry={retry} />
+        )}
+        {state && view === 'diagnostics' && (
+          <Diagnostics
+            state={state}
+            diagnostics={diagnostics}
+            error={diagnosticsError}
+            onRefresh={refreshHealth}
+          />
+        )}
         {state && view === 'settings' && (
           <section className="content-card">
             <p className="eyebrow">{strings.notConfigured}</p>
@@ -89,13 +169,20 @@ export function App(): React.JSX.Element {
 
 function Home({
   state,
+  diagnostics,
   onRetry,
 }: {
   state: BootstrapState;
+  diagnostics: DiagnosticsSnapshot | undefined;
   onRetry: () => Promise<void>;
 }): React.JSX.Element {
   const strings = getCopy();
-  const healthy = state.runtime.status === 'operational';
+  const healthy = state.runtime.status === 'operational' && diagnostics?.status === 'operational';
+  const healthLabel = diagnostics
+    ? healthy
+      ? strings.operational
+      : strings.degraded
+    : 'Unavailable';
   return (
     <section className="hero">
       <div className="orbital-mark" aria-hidden="true">
@@ -109,9 +196,7 @@ function Home({
       <div className={`status-card ${healthy ? 'status-ok' : 'status-warning'}`}>
         <span className="status-dot" aria-hidden="true" />
         <div>
-          <strong data-testid="runtime-status">
-            {healthy ? strings.operational : strings.degraded}
-          </strong>
+          <strong data-testid="runtime-status">{healthLabel}</strong>
           <span>
             v{state.metadata.version} · {state.metadata.platform}/{state.metadata.architecture} ·{' '}
             {state.metadata.environment}
@@ -143,10 +228,14 @@ function Home({
 
 function Diagnostics({
   state,
-  onRetry,
+  diagnostics,
+  error,
+  onRefresh,
 }: {
   state: BootstrapState;
-  onRetry: () => Promise<void>;
+  diagnostics: DiagnosticsSnapshot | undefined;
+  error: string | undefined;
+  onRefresh: () => Promise<void>;
 }): React.JSX.Element {
   const strings = getCopy();
   return (
@@ -176,10 +265,47 @@ function Diagnostics({
         </div>
         <div>
           <dt>Runtime</dt>
-          <dd>{state.runtime.status}</dd>
+          <dd>{diagnostics?.status ?? 'Unavailable'}</dd>
+        </div>
+        <div>
+          <dt>Database</dt>
+          <dd>
+            {diagnostics
+              ? `${diagnostics.database.engine} / ${diagnostics.database.status}`
+              : 'Unavailable'}
+          </dd>
+        </div>
+        <div>
+          <dt>Schema / journal</dt>
+          <dd>
+            {diagnostics
+              ? `${String(diagnostics.database.schemaVersion)} / ${diagnostics.database.journalMode}`
+              : 'Unavailable'}
+          </dd>
+        </div>
+        <div>
+          <dt>Integrity / foreign keys</dt>
+          <dd>
+            {diagnostics
+              ? `${diagnostics.database.integrity} / ${diagnostics.database.foreignKeysEnabled ? 'enabled' : 'disabled'}`
+              : 'Unavailable'}
+          </dd>
+        </div>
+        <div>
+          <dt>Persistent records</dt>
+          <dd>
+            {diagnostics
+              ? `${String(diagnostics.database.eventCount)} events / ${String(diagnostics.database.auditCount)} audit entries`
+              : 'Unavailable'}
+          </dd>
         </div>
       </dl>
-      {state.runtime.services.map((service) => (
+      {error && (
+        <p className="diagnostics-error" role="alert">
+          {error}
+        </p>
+      )}
+      {(diagnostics?.services ?? []).map((service) => (
         <article className="service-row" key={service.serviceId}>
           <div>
             <strong>{service.serviceId}</strong>
@@ -189,11 +315,39 @@ function Diagnostics({
           {service.sanitizedError && <p>{service.sanitizedError}</p>}
         </article>
       ))}
-      {state.runtime.status !== 'operational' && (
-        <button type="button" onClick={() => void onRetry()}>
-          {strings.retry}
-        </button>
-      )}
+      {!diagnostics && !error && <p className="loading">{strings.loading}</p>}
+      <button type="button" onClick={() => void onRefresh()}>
+        Refresh health
+      </button>
     </section>
   );
+}
+
+function rendererContext(): {
+  requestId: string;
+  actor: 'renderer';
+  timestamp: string;
+} {
+  return {
+    requestId: crypto.randomUUID(),
+    actor: 'renderer',
+    timestamp: new Date().toISOString(),
+  };
+}
+
+function readEventCursor(): number {
+  try {
+    const value = Number(sessionStorage.getItem('jupiter:event-cursor') ?? 0);
+    return Number.isSafeInteger(value) && value >= 0 ? value : 0;
+  } catch {
+    return 0;
+  }
+}
+
+function writeEventCursor(sequence: number): void {
+  try {
+    sessionStorage.setItem('jupiter:event-cursor', String(sequence));
+  } catch {
+    // Event replay remains correct for the current renderer session.
+  }
 }

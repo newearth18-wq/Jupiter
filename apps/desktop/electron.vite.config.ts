@@ -7,6 +7,9 @@ const aliases = {
     new URL('../../packages/contracts/src/index.ts', import.meta.url),
   ),
   '@jupiter/core': fileURLToPath(new URL('../../packages/core/src/index.ts', import.meta.url)),
+  '@jupiter/database': fileURLToPath(
+    new URL('../../packages/database/src/index.ts', import.meta.url),
+  ),
 };
 
 export default defineConfig({

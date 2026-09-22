@@ -70,6 +70,8 @@ importers:
 
   packages/core: {}
 
+  packages/database: {}
+
 packages:
 
   '@babel/code-frame@7.29.7':
