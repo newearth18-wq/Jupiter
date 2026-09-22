@@ -1,0 +1,13 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "jsx": "react-jsx",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "types": ["electron-vite/node", "node", "vitest/globals"],
+    "paths": {
+      "@jupiter/contracts": ["../../packages/contracts/src/index.ts"],
+      "@jupiter/core": ["../../packages/core/src/index.ts"]
+    }
+  },
+  "include": ["electron.vite.config.ts", "src/**/*.ts", "src/**/*.tsx", "vitest.*.config.ts"]
+}

@@ -1,0 +1,31 @@
+import react from '@vitejs/plugin-react';
+import { defineConfig } from 'electron-vite';
+import { fileURLToPath } from 'node:url';
+
+const aliases = {
+  '@jupiter/contracts': fileURLToPath(
+    new URL('../../packages/contracts/src/index.ts', import.meta.url),
+  ),
+  '@jupiter/core': fileURLToPath(new URL('../../packages/core/src/index.ts', import.meta.url)),
+};
+
+export default defineConfig({
+  main: {
+    build: { externalizeDeps: true },
+    resolve: { alias: aliases },
+  },
+  preload: {
+    build: {
+      externalizeDeps: true,
+      rollupOptions: { output: { format: 'cjs' } },
+    },
+    resolve: { alias: aliases },
+  },
+  renderer: {
+    plugins: [react()],
+    resolve: { alias: aliases },
+    build: {
+      sourcemap: false,
+    },
+  },
+});

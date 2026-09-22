@@ -1,0 +1,39 @@
+{
+  "name": "jupiter",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Jupiter Windows desktop AI agent foundation",
+  "license": "UNLICENSED",
+  "packageManager": "pnpm@11.19.0",
+  "engines": {
+    "node": ">=24.0.0",
+    "pnpm": ">=11.0.0"
+  },
+  "scripts": {
+    "postinstall": "pnpm run metadata",
+    "metadata": "node scripts/generate-build-metadata.mjs --channel=development",
+    "metadata:production": "node scripts/generate-build-metadata.mjs --channel=stable",
+    "dev": "pnpm run metadata && pnpm --filter @jupiter/contracts build && pnpm --filter @jupiter/core build && pnpm --filter @jupiter/desktop dev",
+    "build": "pnpm run metadata:production && pnpm --filter @jupiter/contracts build && pnpm --filter @jupiter/core build && pnpm --filter @jupiter/desktop build",
+    "test": "pnpm run test:unit && pnpm run test:integration",
+    "test:unit": "pnpm run metadata && pnpm -r --if-present run test:unit",
+    "test:integration": "pnpm run build && pnpm --filter @jupiter/desktop test:integration",
+    "lint": "pnpm run metadata && eslint . --max-warnings 0",
+    "typecheck": "pnpm run metadata && pnpm -r --if-present run typecheck",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "secrets:check": "node scripts/check-secrets.mjs",
+    "package:windows": "pnpm run build && pnpm --filter @jupiter/desktop package:windows",
+    "package:validate": "pnpm run build && pnpm --filter @jupiter/desktop package:dir && node scripts/validate-package.mjs",
+    "verify": "pnpm run secrets:check && pnpm run format:check && pnpm run lint && pnpm run typecheck && pnpm run test:unit && pnpm run build && pnpm --filter @jupiter/desktop test:integration && pnpm --filter @jupiter/desktop package:dir && node scripts/validate-package.mjs"
+  },
+  "devDependencies": {
+    "@eslint/js": "10.0.1",
+    "@types/node": "24.10.1",
+    "eslint": "10.11.0",
+    "prettier": "3.9.8",
+    "typescript": "6.0.3",
+    "typescript-eslint": "8.70.1",
+    "vitest": "5.0.1"
+  }
+}

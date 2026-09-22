@@ -1,0 +1,13 @@
+node_modules/
+node_modules.failed-*/
+dist/
+out/
+release/
+coverage/
+*.log
+.env.local
+.env.*.local
+apps/desktop/src/generated/build-metadata.json
+test-results/
+Thumbs.db
+.DS_Store

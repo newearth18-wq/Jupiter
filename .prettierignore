@@ -1,0 +1,7 @@
+node_modules
+node_modules.failed-*
+dist
+out
+release
+pnpm-lock.yaml
+apps/desktop/src/generated/build-metadata.json
