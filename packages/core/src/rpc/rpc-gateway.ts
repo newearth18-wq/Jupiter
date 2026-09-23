@@ -54,6 +54,16 @@ const CAPABILITIES: Readonly<Record<RpcRequestName, string>> = {
   'workflows.cancel': 'workflows.cancel',
   'workflows.replan': 'workflows.replan',
   'workflows.checkpoint.resolve': 'workflows.checkpoint.resolve',
+  'skills.list': 'skills.read',
+  'skills.search': 'skills.read',
+  'skills.get': 'skills.read',
+  'skills.versions': 'skills.versions',
+  'skills.enable': 'skills.enable',
+  'skills.disable': 'skills.disable',
+  'skills.health': 'skills.health',
+  'skills.invoke': 'skills.invoke',
+  'skills.cancel': 'skills.cancel',
+  'skills.executions': 'skills.read',
 };
 
 export class RpcGateway {

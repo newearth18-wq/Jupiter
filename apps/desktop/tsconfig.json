@@ -8,6 +8,7 @@
       "@jupiter/ai-runtime": ["../../services/ai-runtime/src/index.ts"],
       "@jupiter/mission-runtime": ["../../services/mission-runtime/src/index.ts"],
       "@jupiter/workflow-runtime": ["../../services/workflow-runtime/src/index.ts"],
+      "@jupiter/skill-runtime": ["../../services/skill-runtime/src/index.ts"],
       "@jupiter/contracts": ["../../packages/contracts/src/index.ts"],
       "@jupiter/core": ["../../packages/core/src/index.ts"],
       "@jupiter/database": ["../../packages/database/src/index.ts"],

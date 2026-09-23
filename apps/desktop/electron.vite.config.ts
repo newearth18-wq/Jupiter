@@ -12,6 +12,9 @@ const aliases = {
   '@jupiter/workflow-runtime': fileURLToPath(
     new URL('../../services/workflow-runtime/src/index.ts', import.meta.url),
   ),
+  '@jupiter/skill-runtime': fileURLToPath(
+    new URL('../../services/skill-runtime/src/index.ts', import.meta.url),
+  ),
   '@jupiter/contracts': fileURLToPath(
     new URL('../../packages/contracts/src/index.ts', import.meta.url),
   ),

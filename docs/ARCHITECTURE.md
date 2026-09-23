@@ -1,4 +1,4 @@
-# SET 0–5 architecture
+# SET 0–6 architecture
 
 ## Trust boundaries
 
@@ -8,7 +8,7 @@ React product shell (sandboxed, no Node)
   -> Electron Main verifies exact webContents and origin
   -> strict versioned schema validation
   -> Jupiter Core capability dispatcher
-  -> provider-agnostic chat, durable Mission, and durable Workflow runtime ports
+  -> provider-agnostic chat, durable Mission/Workflow, and executable Skill runtime ports
   -> SQLite (WAL, foreign keys, migrations, transactions) + Windows DPAPI credential vault
 ```
 
@@ -17,18 +17,19 @@ The renderer cannot import Node.js, Electron, filesystem, shell, or credential A
 ## Repository boundaries
 
 - `apps/desktop`: Electron Main host gateway, DPAPI vault, narrow preload, localized React shell, service-backed screens, and Electron acceptance tests.
-- `packages/contracts`: strict schemas for bootstrap, Core RPC/events, diagnostics, UI preferences, routes, AI providers/models/settings, conversations, messages, Mission records, workflow plans/executions/checkpoints/artifacts, and transient stream events.
+- `packages/contracts`: strict schemas for bootstrap, Core RPC/events, diagnostics, UI preferences, routes, AI, Mission, Workflow, Skill definitions/invocations/results, and transient stream events.
 - `packages/core`: provider-neutral capability dispatcher, RPC gateway, persistent event bus, service lifecycle isolation, typed errors, structured logging, and runtime ports. Core contains no provider-specific code.
-- `packages/database`: SQLite migrations and repositories for settings, ordered events, audit records, service health, non-secret provider/model metadata, routing settings, conversations/messages, normalized Mission records, and versioned workflow state.
+- `packages/database`: SQLite migrations and repositories for settings, ordered events, audit records, service health, AI metadata, conversations/messages, Mission/Workflow state, Skill definitions, health, and sanitized execution metadata.
 - `packages/ui`: reusable Visual Design Lock tokens and accessible primitives for buttons, surfaces, status, empty states, tabs, dialogs, and toasts.
 - `services/ai-runtime`: dynamic provider registry, OpenAI-compatible adapter, capability/privacy model router, explicit fallback policy, and cancelable streaming chat orchestration.
 - `services/mission-runtime`: explicit finite-state machine, durable attempts, transition audit, safe-boundary pause, cancellation propagation, retry linkage, and completion/partial-success guards.
 - `services/workflow-runtime`: strict Planner validation, dependency scheduling, safe parallel batches, conditions, bounded retry/backoff, timeouts, checkpoints, idempotent attempt recovery, artifact passing, compensation, and versioned re-planning.
+- `services/skill-runtime`: versioned executable registry, recursive schema validation, permission/time/health gates, cancellation, structured isolation of failures, sanitized history, four internal Skills, and Workflow executor adapters.
 - Other `services/*`, `packages/security`, and `plugins`: reserved and unavailable until their owning SETs.
 
 ## Product shell
 
-The custom Windows title-bar overlay and compact sidebar expose all twelve required destinations. Home, Chat, Missions, AI Models, Settings, and Diagnostics have live behavior. Other screens render localized truthful availability states. The central Jupiter form retains the locked spherical core, orbital rings, restrained particles, and service-derived operational/degraded/offline state. Current Mission reads the latest durable Mission; controls are enabled only when the real state permits them.
+The custom Windows title-bar overlay and compact sidebar expose all twelve required destinations. Home, Chat, Missions, Skills, AI Models, Settings, and Diagnostics have live behavior. Other screens render localized truthful availability states. The central Jupiter form retains the locked spherical core, orbital rings, restrained particles, and service-derived operational/degraded/offline state. Current Mission reads the latest durable Mission; controls are enabled only when the real state permits them.
 
 ## AI provider and chat boundary
 
@@ -68,8 +69,14 @@ Planner model output is treated as untrusted data. It must satisfy the strict pl
 
 The engine persists plans, revisions, executions, step attempts, checkpoints, and artifact bindings before exposing state. Ready dependency nodes run concurrently; retries retain one idempotency key, timeouts abort the executor, pause waits for a safe batch boundary, and cancellation propagates to all active children. Restart recovery resumes durable `RUNNING` attempts using the same idempotency key. Approval and identity checkpoints enter `WAITING` and can only be resolved through Core-authorized RPC.
 
-The Mission screen renders a data-backed workflow graph, revision, current statuses, attempts, dependencies, checkpoint state, assumptions, and verification plan. If no validated plan exists it shows `Not configured`. Production SET 5 deliberately registers no fake executors and does not expose Planner submission to the renderer.
+The Mission screen renders a data-backed workflow graph, revision, current statuses, attempts, dependencies, checkpoint state, assumptions, and verification plan. If no validated plan exists it shows `Not configured`. SET 6 connects the four declared internal Skills through the same Workflow executor port; no privileged or simulated executor is registered.
+
+## Skill boundary
+
+A Skill definition declares identity, semantic version, strict recursive input/output schemas, permissions, timeout, category, provider, and compatible runtime. Registry invocation validates metadata, enabled state, health, compatibility, exact declared/granted permissions, input, output, and terminal result. Timeout and cancellation abort the isolated invocation signal and return structured status; handler or schema failures are contained and cannot crash Core.
+
+Only sanitized shape metadata—types, object keys, and collection/string lengths—is stored for inputs and outputs. Values, credentials, and secrets are not written to Skill history. The Skill Center reads registry state through typed RPC and exposes search/filter, health, enable/disable, version/runtime/permission metadata, and a safe test interface only for permission-free Jupiter internal Skills.
 
 ## Deferred architecture
 
-The Skills registry, real Agent/skill implementations, Memory, Files/Artifact Manager, Automations, devices, plugins, Permission Engine UI, Identity Engine UI, and native Windows notifications remain unavailable. SET 5 provides their validated workflow boundary but does not implement or simulate later-SET capabilities.
+Privileged Skills, external plugin loading, the Agent runtime, Memory, Files/Artifact Manager, Automations, devices, Permission Engine UI, Identity Engine UI, and native Windows notifications remain unavailable. SET 6 does not implement or simulate SET 7 capabilities.

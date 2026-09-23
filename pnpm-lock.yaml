@@ -85,6 +85,8 @@ importers:
 
   services/mission-runtime: {}
 
+  services/skill-runtime: {}
+
   services/workflow-runtime: {}
 
 packages:

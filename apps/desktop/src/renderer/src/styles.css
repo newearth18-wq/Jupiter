@@ -1139,6 +1139,123 @@ select {
   gap: var(--j-space-5);
 }
 
+.skill-toolbar {
+  display: grid;
+  grid-template-columns: minmax(12rem, 2fr) minmax(10rem, 1fr) auto;
+  gap: var(--j-space-4);
+  align-items: end;
+}
+
+.skill-toolbar label,
+.skill-test-panel label {
+  display: grid;
+  gap: var(--j-space-2);
+  color: var(--j-color-text-muted);
+  font-size: var(--j-font-size-sm);
+}
+
+.skill-toolbar input,
+.skill-toolbar select,
+.skill-test-panel input {
+  min-width: 0;
+  padding: 0.7rem 0.8rem;
+  border: 1px solid var(--j-color-border);
+  border-radius: var(--j-radius-sm);
+  background: var(--j-color-surface-raised);
+  color: var(--j-color-text);
+}
+
+.skill-center-grid {
+  display: grid;
+  grid-template-columns: minmax(16rem, 0.8fr) minmax(0, 1.4fr);
+  gap: var(--j-space-5);
+  align-items: start;
+}
+
+.skill-list {
+  display: grid;
+  gap: var(--j-space-2);
+}
+
+.skill-list > button {
+  display: flex;
+  gap: var(--j-space-3);
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: var(--j-space-3);
+  border: 1px solid transparent;
+  border-radius: var(--j-radius-sm);
+  background: transparent;
+  color: var(--j-color-text);
+  text-align: left;
+  cursor: pointer;
+}
+
+.skill-list > button:hover,
+.skill-list > button[aria-current='true'] {
+  border-color: var(--j-color-accent);
+  background: var(--j-color-accent-soft);
+}
+
+.skill-list > button > span:first-child {
+  display: grid;
+  gap: var(--j-space-1);
+  min-width: 0;
+}
+
+.skill-list small {
+  color: var(--j-color-text-muted);
+  overflow-wrap: anywhere;
+}
+
+.skill-detail,
+.skill-test-panel,
+.skill-test-result {
+  display: grid;
+  gap: var(--j-space-4);
+}
+
+.skill-metadata {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--j-space-3);
+  margin: 0;
+}
+
+.skill-metadata div {
+  min-width: 0;
+  padding: var(--j-space-3);
+  border-radius: var(--j-radius-sm);
+  background: var(--j-color-surface-raised);
+}
+
+.skill-metadata dt {
+  color: var(--j-color-text-muted);
+  font-size: var(--j-font-size-sm);
+}
+
+.skill-metadata dd {
+  margin: var(--j-space-1) 0 0;
+  overflow-wrap: anywhere;
+}
+
+.skill-test-panel {
+  padding-top: var(--j-space-4);
+  border-top: 1px solid var(--j-color-border);
+}
+
+.skill-test-result pre {
+  max-height: 15rem;
+  padding: var(--j-space-3);
+  overflow: auto;
+  border-radius: var(--j-radius-sm);
+  background: var(--j-color-surface-raised);
+  color: var(--j-color-text);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
 .mission-timeline {
   margin: var(--j-space-4) 0 0;
   padding: 0;
@@ -1390,7 +1507,8 @@ select {
 
   .chat-layout,
   .models-grid,
-  .mission-manager-grid {
+  .mission-manager-grid,
+  .skill-center-grid {
     grid-template-columns: minmax(0, 1fr);
   }
 
@@ -1431,7 +1549,9 @@ select {
   .command-grid,
   .settings-grid,
   .diagnostics-grid,
-  .mission-summary-grid {
+  .mission-summary-grid,
+  .skill-toolbar,
+  .skill-metadata {
     grid-template-columns: minmax(0, 1fr);
   }
 

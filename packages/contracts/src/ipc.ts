@@ -41,6 +41,19 @@ import {
   WorkflowPlanCreateInputSchema,
   WorkflowReplanInputSchema,
 } from './workflow.js';
+import {
+  SkillCancelInputSchema,
+  SkillExecutionListResultSchema,
+  SkillExecutionResultSchema,
+  SkillHealthResultSchema,
+  SkillInvocationSchema,
+  SkillListResultSchema,
+  SkillLookupInputSchema,
+  SkillLookupResultSchema,
+  SkillSearchInputSchema,
+  SkillToggleInputSchema,
+  SkillVersionsResultSchema,
+} from './skill.js';
 
 const EmptyPayloadSchema = z.object({}).strict();
 
@@ -248,6 +261,20 @@ const WorkflowCheckpointResolveRequestSchema = rpcRequest(
   'workflows.checkpoint.resolve',
   WorkflowCheckpointResolveInputSchema,
 );
+const SkillListRequestSchema = rpcRequest('query', 'skills.list', EmptyPayloadSchema);
+const SkillSearchRequestSchema = rpcRequest('query', 'skills.search', SkillSearchInputSchema);
+const SkillGetRequestSchema = rpcRequest('query', 'skills.get', SkillLookupInputSchema);
+const SkillVersionsRequestSchema = rpcRequest('query', 'skills.versions', SkillToggleInputSchema);
+const SkillEnableRequestSchema = rpcRequest('command', 'skills.enable', SkillToggleInputSchema);
+const SkillDisableRequestSchema = rpcRequest('command', 'skills.disable', SkillToggleInputSchema);
+const SkillHealthRequestSchema = rpcRequest('command', 'skills.health', SkillToggleInputSchema);
+const SkillInvokeRequestSchema = rpcRequest('command', 'skills.invoke', SkillInvocationSchema);
+const SkillCancelRequestSchema = rpcRequest('command', 'skills.cancel', SkillCancelInputSchema);
+const SkillExecutionsRequestSchema = rpcRequest(
+  'query',
+  'skills.executions',
+  z.object({ skillId: z.string().min(1).max(120).optional() }).strict(),
+);
 
 export const RpcRequestEnvelopeSchema = z.discriminatedUnion('name', [
   CorePingRequestSchema,
@@ -287,6 +314,16 @@ export const RpcRequestEnvelopeSchema = z.discriminatedUnion('name', [
   WorkflowCancelRequestSchema,
   WorkflowReplanRequestSchema,
   WorkflowCheckpointResolveRequestSchema,
+  SkillListRequestSchema,
+  SkillSearchRequestSchema,
+  SkillGetRequestSchema,
+  SkillVersionsRequestSchema,
+  SkillEnableRequestSchema,
+  SkillDisableRequestSchema,
+  SkillHealthRequestSchema,
+  SkillInvokeRequestSchema,
+  SkillCancelRequestSchema,
+  SkillExecutionsRequestSchema,
 ]);
 
 export const RpcRequestNameSchema = z.enum([
@@ -327,6 +364,16 @@ export const RpcRequestNameSchema = z.enum([
   'workflows.cancel',
   'workflows.replan',
   'workflows.checkpoint.resolve',
+  'skills.list',
+  'skills.search',
+  'skills.get',
+  'skills.versions',
+  'skills.enable',
+  'skills.disable',
+  'skills.health',
+  'skills.invoke',
+  'skills.cancel',
+  'skills.executions',
 ]);
 
 export const RpcSuccessEnvelopeSchema = z
@@ -438,6 +485,23 @@ export function parseRpcSuccessData(
     case 'workflows.replan':
     case 'workflows.checkpoint.resolve':
       return WorkflowDetailSchema.parse(data);
+    case 'skills.list':
+    case 'skills.search':
+      return SkillListResultSchema.parse(data);
+    case 'skills.get':
+      return SkillLookupResultSchema.parse(data);
+    case 'skills.versions':
+      return SkillVersionsResultSchema.parse(data);
+    case 'skills.enable':
+    case 'skills.disable':
+    case 'skills.health':
+      return SkillHealthResultSchema.parse(data);
+    case 'skills.invoke':
+      return SkillExecutionResultSchema.parse(data);
+    case 'skills.cancel':
+      return z.object({ cancelled: z.boolean() }).strict().parse(data);
+    case 'skills.executions':
+      return SkillExecutionListResultSchema.parse(data);
   }
 }
 

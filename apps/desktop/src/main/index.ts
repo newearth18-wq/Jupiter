@@ -5,8 +5,10 @@ import {
   BOOTSTRAP_SCHEMA_VERSION,
   BootstrapStateSchema,
   CancelRequestSchema,
+  MissionDetailSchema,
   RpcRequestEnvelopeSchema,
   RetryStartupRequestSchema,
+  WorkflowDetailSchema,
   type BootstrapState,
   type ChatStreamEvent,
   type DomainEvent,
@@ -354,6 +356,42 @@ async function writeSmokeEvidence(window: BrowserWindow): Promise<void> {
               : null,
             unavailableVisible: false
           };
+          const skillList = await window.jupiter.request({
+            schemaVersion: 1,
+            kind: 'query',
+            name: 'skills.list',
+            context: makeContext(),
+            payload: {}
+          });
+          const echoExecutionId = crypto.randomUUID();
+          const skillEcho = await window.jupiter.request({
+            schemaVersion: 1,
+            kind: 'command',
+            name: 'skills.invoke',
+            context: makeContext(),
+            payload: {
+              executionId: echoExecutionId,
+              skillId: 'echo_text',
+              missionId: crypto.randomUUID(),
+              input: { text: 'exact smoke echo' },
+              permissions: [],
+              timeoutMs: 1000,
+              idempotencyKey: echoExecutionId
+            }
+          });
+          const skill = {
+            listStatus: skillList.status,
+            count: skillList.status === 'success' ? skillList.data.skills.length : 0,
+            allHealthy: skillList.status === 'success'
+              ? skillList.data.skills.every((entry) => entry.health === 'HEALTHY')
+              : false,
+            echoStatus: skillEcho.status,
+            echoExecutionStatus: skillEcho.status === 'success' ? skillEcho.data.status : null,
+            echoOutput: skillEcho.status === 'success' ? skillEcho.data.output?.text ?? null : null,
+            centerVisible: false,
+            healthVisible: false,
+            safeTestVisible: false
+          };
           let invalidRejected = false;
           try {
             await window.jupiter.request({ name: 'unsafe.execute', payload: {} });
@@ -381,6 +419,28 @@ async function writeSmokeEvidence(window: BrowserWindow): Promise<void> {
                 document.querySelector('[data-testid="mission-detail"]') !== null;
               workflow.unavailableVisible =
                 document.querySelector('[data-testid="workflow-unavailable"]') !== null;
+            }
+            if (screenId === 'skills') {
+              const skillStarted = Date.now();
+              while (
+                document.querySelector('[data-testid="skill-detail"]') === null &&
+                Date.now() - skillStarted < 2000
+              ) {
+                await wait(25);
+              }
+              skill.centerVisible = document.querySelector('[data-testid="skill-detail"]') !== null;
+              skill.healthVisible = document.querySelector('[data-testid="skill-detail"]')?.textContent?.includes('HEALTHY') ?? false;
+              const testButton = document.querySelector('.skill-test-panel .j-button');
+              if (testButton instanceof HTMLElement) testButton.click();
+              const testStarted = Date.now();
+              while (
+                document.querySelector('[data-testid="skill-test-result"]') === null &&
+                Date.now() - testStarted < 2000
+              ) {
+                await wait(25);
+              }
+              skill.safeTestVisible =
+                document.querySelector('[data-testid="skill-test-result"]')?.textContent?.includes('SUCCESS') ?? false;
             }
             screens.push({
               id: screenId,
@@ -498,6 +558,7 @@ async function writeSmokeEvidence(window: BrowserWindow): Promise<void> {
             denied,
             mission,
             workflow,
+            skill,
             invalidRejected,
             eventCursor,
             screens,
@@ -723,6 +784,17 @@ async function writeSmokeEvidence(window: BrowserWindow): Promise<void> {
             },
             payload: { includeArchived: false }
           });
+          const skills = await window.jupiter.request({
+            schemaVersion: 1,
+            kind: 'query',
+            name: 'skills.list',
+            context: {
+              requestId: crypto.randomUUID(),
+              actor: 'renderer',
+              timestamp: new Date().toISOString()
+            },
+            payload: {}
+          });
           resolve({
             cursor,
             replayedEventCount: response.status === 'success' ? response.data.events.length : -1,
@@ -730,7 +802,8 @@ async function writeSmokeEvidence(window: BrowserWindow): Promise<void> {
             language: document.documentElement.lang,
             motion: document.documentElement.dataset.motion ?? null,
             theme: document.documentElement.dataset.theme ?? null,
-            missionCount: missions.status === 'success' ? missions.data.missions.length : -1
+            missionCount: missions.status === 'success' ? missions.data.missions.length : -1,
+            skillCount: skills.status === 'success' ? skills.data.skills.length : -1
           });
         } else {
           setTimeout(inspect, 50);
@@ -761,6 +834,109 @@ async function writeSmokeEvidence(window: BrowserWindow): Promise<void> {
       activeNavigation: document.activeElement?.getAttribute('data-nav-id') ?? null
     }), 50);
   })`);
+  let skillWorkflow: unknown;
+  if (coreRuntime) {
+    const missionRequestId = randomUUID();
+    const missionCreated = await coreRuntime.request(
+      {
+        schemaVersion: 1,
+        kind: 'command',
+        name: 'missions.create',
+        context: {
+          requestId: missionRequestId,
+          actor: 'test',
+          timestamp: new Date().toISOString(),
+        },
+        payload: { userRequest: 'Execute the internal echo Skill through a durable Workflow.' },
+      },
+      'test',
+      new AbortController().signal,
+    );
+    if (missionCreated.status === 'success') {
+      const missionId = MissionDetailSchema.parse(missionCreated.data).mission.missionId;
+      const stepId = randomUUID();
+      const planCreated = await coreRuntime.request(
+        {
+          schemaVersion: 1,
+          kind: 'command',
+          name: 'workflows.plan.create',
+          context: {
+            requestId: randomUUID(),
+            actor: 'test',
+            missionId,
+            timestamp: new Date().toISOString(),
+          },
+          payload: {
+            missionId,
+            modelOutput: {
+              goal: 'Return exact text through the registered echo Skill.',
+              assumptions: ['The internal echo Skill is healthy.'],
+              steps: [
+                {
+                  stepId,
+                  title: 'Echo exact text',
+                  description: 'Invoke the registered echo_text Skill.',
+                  skillId: 'echo_text',
+                  dependencies: [],
+                  input: { text: 'workflow echo' },
+                  timeoutMs: 1000,
+                  retryPolicy: { maxAttempts: 1, initialBackoffMs: 0, backoffMultiplier: 1 },
+                  verification: { required: true, strategy: 'Compare output text with input.' },
+                  status: 'PENDING',
+                  requiredPermissions: [],
+                  producesArtifacts: [],
+                  checkpoint: 'NONE',
+                },
+              ],
+              requiredSkills: ['echo_text'],
+              requiredPermissions: [],
+              expectedArtifacts: [],
+              verificationPlan: {
+                summary: 'Verify the exact echo output.',
+                checks: ['Output schema passes.'],
+              },
+              rationale: 'One registered deterministic Skill is sufficient.',
+            },
+          },
+        },
+        'test',
+        new AbortController().signal,
+      );
+      const workflowStarted =
+        planCreated.status === 'success'
+          ? await coreRuntime.request(
+              {
+                schemaVersion: 1,
+                kind: 'command',
+                name: 'workflows.start',
+                context: {
+                  requestId: randomUUID(),
+                  actor: 'test',
+                  missionId,
+                  timestamp: new Date().toISOString(),
+                },
+                payload: { missionId },
+              },
+              'test',
+              new AbortController().signal,
+            )
+          : undefined;
+      const workflowDetail =
+        workflowStarted?.status === 'success'
+          ? WorkflowDetailSchema.parse(workflowStarted.data)
+          : undefined;
+      skillWorkflow = {
+        missionStatus: missionCreated.status,
+        planStatus: planCreated.status,
+        executionStatus: workflowStarted?.status ?? 'skipped',
+        workflowStatus: workflowDetail?.execution?.status ?? null,
+        stepOutput: workflowDetail
+          ? ((workflowDetail.stepAttempts.at(-1)?.output as { text?: string } | undefined)?.text ??
+            null)
+          : null,
+      };
+    }
+  }
   const screenshotPath = process.env.JUPITER_SMOKE_SCREENSHOT_PATH;
   if (screenshotPath) {
     const screenshotScreen = process.env.JUPITER_SMOKE_SCREENSHOT_SCREEN ?? 'home';
@@ -769,12 +945,25 @@ async function writeSmokeEvidence(window: BrowserWindow): Promise<void> {
     await window.webContents.executeJavaScript(`new Promise((resolve) => {
       const targetScreen = ${screenshotScreenLiteral};
       location.hash = '#/' + targetScreen;
+      const targetNavigation = document.querySelector('[data-nav-id="' + targetScreen + '"]');
+      if (targetNavigation instanceof HTMLElement) targetNavigation.click();
       const startedAt = Date.now();
+      let skillRefreshTriggered = false;
       const waitForScreen = () => {
         const activeScreen = document.querySelector('[data-screen]')?.getAttribute('data-screen');
         const missionReady = targetScreen !== 'missions' ||
           document.querySelector('[data-testid="mission-detail"]') !== null;
-        if ((activeScreen === targetScreen && missionReady) || Date.now() - startedAt >= 3000) {
+        const skillsReady = targetScreen !== 'skills' ||
+          document.querySelector('[data-testid="skill-detail"]') !== null;
+        if (
+          targetScreen === 'skills' && !skillsReady && !skillRefreshTriggered &&
+          Date.now() - startedAt > 750
+        ) {
+          skillRefreshTriggered = true;
+          const refresh = document.querySelector('.skill-toolbar .j-button');
+          if (refresh instanceof HTMLElement) refresh.click();
+        }
+        if ((activeScreen === targetScreen && missionReady && skillsReady) || Date.now() - startedAt >= 3000) {
           setTimeout(resolve, 500);
           return;
         }
@@ -794,6 +983,7 @@ async function writeSmokeEvidence(window: BrowserWindow): Promise<void> {
     reconnection,
     responsive,
     keyboardNavigation,
+    skillWorkflow,
     persistedWindowState: coreRuntime?.getWindowState(),
     webPreferences: {
       contextIsolation: secureWebPreferences.contextIsolation,

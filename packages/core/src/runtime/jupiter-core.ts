@@ -9,6 +9,8 @@ import {
   type ChatStreamEvent,
   type DiagnosticsSnapshot,
   type RpcResponseEnvelope,
+  type SkillInvocation,
+  type SkillLookupInput,
   type WorkflowCheckpointResolveInput,
   type WorkflowControlInput,
   type WorkflowPlanCreateInput,
@@ -26,6 +28,7 @@ import type {
   SettingsRepository,
   ServiceHealthRepository,
   WorkflowRuntime,
+  SkillRuntime,
 } from '../ports.js';
 import { RpcGateway } from '../rpc/rpc-gateway.js';
 import { ServiceManager, type ManagedService } from '../services/service-manager.js';
@@ -40,6 +43,7 @@ export type JupiterCoreDependencies = {
   chatRuntime?: ChatRuntime;
   missionRuntime?: MissionRuntime;
   workflowRuntime?: WorkflowRuntime;
+  skillRuntime?: SkillRuntime;
 };
 
 export class JupiterCore {
@@ -53,6 +57,7 @@ export class JupiterCore {
   readonly #chatRuntime: ChatRuntime | undefined;
   readonly #missionRuntime: MissionRuntime | undefined;
   readonly #workflowRuntime: WorkflowRuntime | undefined;
+  readonly #skillRuntime: SkillRuntime | undefined;
   #started = false;
 
   constructor(dependencies: JupiterCoreDependencies) {
@@ -64,6 +69,7 @@ export class JupiterCore {
     this.#chatRuntime = dependencies.chatRuntime;
     this.#missionRuntime = dependencies.missionRuntime;
     this.#workflowRuntime = dependencies.workflowRuntime;
+    this.#skillRuntime = dependencies.skillRuntime;
     this.#dispatcher = new CapabilityDispatcher();
     this.#gateway = new RpcGateway(this.#dispatcher, dependencies.auditRepository);
     this.#registerCapabilities();
@@ -104,6 +110,7 @@ export class JupiterCore {
     await Promise.all([
       this.#chatRuntime?.shutdown(),
       this.#workflowRuntime?.shutdown(),
+      this.#skillRuntime?.shutdown(),
       this.#missionRuntime?.shutdown(),
     ]);
   }
@@ -227,6 +234,54 @@ export class JupiterCore {
     if (this.#chatRuntime) this.#registerAiCapabilities(this.#chatRuntime);
     if (this.#missionRuntime) this.#registerMissionCapabilities(this.#missionRuntime);
     if (this.#workflowRuntime) this.#registerWorkflowCapabilities(this.#workflowRuntime);
+    if (this.#skillRuntime) this.#registerSkillCapabilities(this.#skillRuntime);
+  }
+
+  #registerSkillCapabilities(runtime: SkillRuntime): void {
+    const register = (
+      capability: string,
+      handler: Parameters<CapabilityDispatcher['register']>[0]['handler'],
+      allowedActors: Actor[] = ['renderer', 'core', 'test'],
+    ): void => this.#dispatcher.register({ capability, allowedActors, handler });
+    register('skills.read', (input) => {
+      const payload = input as {
+        skillId?: string;
+        version?: string;
+        query?: string;
+        category?: string;
+      };
+      if (payload.skillId) {
+        return { skill: runtime.get(payload as SkillLookupInput) ?? null };
+      }
+      return {
+        skills: runtime.search({
+          query: payload.query ?? '',
+          ...(payload.category ? { category: payload.category } : {}),
+        }),
+      };
+    });
+    register('skills.versions', (input) => {
+      const skillId = (input as { skillId: string }).skillId;
+      return { skillId, versions: runtime.listVersions(skillId) };
+    });
+    register('skills.enable', (input) => ({
+      skill: runtime.enable((input as { skillId: string }).skillId),
+    }));
+    register('skills.disable', (input) => ({
+      skill: runtime.disable((input as { skillId: string }).skillId),
+    }));
+    register('skills.health', async (input, context) => ({
+      skill: await runtime.healthCheck((input as { skillId: string }).skillId, context.signal),
+    }));
+    register('skills.invoke', (input, context) =>
+      runtime.invoke(input as SkillInvocation, context.signal),
+    );
+    register('skills.cancel', (input) => ({
+      cancelled: runtime.cancel((input as { executionId: string }).executionId),
+    }));
+    register('skills.executions', (input) => ({
+      executions: runtime.listExecutions((input as { skillId?: string }).skillId),
+    }));
   }
 
   #registerWorkflowCapabilities(runtime: WorkflowRuntime): void {

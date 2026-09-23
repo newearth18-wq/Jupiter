@@ -16,6 +16,7 @@ import {
   DurableWorkflowRuntime,
   type DurableWorkflowRuntimeDependencies,
 } from '@jupiter/workflow-runtime';
+import { createInternalSkills, ExecutableSkillRegistry } from '@jupiter/skill-runtime';
 import { DpapiCredentialVault } from './dpapi-credential-vault.js';
 
 export type DesktopCoreRuntimeOptions = {
@@ -28,6 +29,7 @@ export class DesktopCoreRuntime {
   readonly #database: JupiterDatabase;
   readonly #core: JupiterCore;
   readonly #workflowRuntime: DurableWorkflowRuntime;
+  readonly #skillRuntime: ExecutableSkillRegistry;
   #closed = false;
 
   constructor(options: DesktopCoreRuntimeOptions) {
@@ -55,9 +57,23 @@ export class DesktopCoreRuntime {
     const workflowEventBridge: {
       publish?: NonNullable<DurableWorkflowRuntimeDependencies['recordEvent']>;
     } = {};
+    const skillEventBridge: {
+      publish?: DurableWorkflowRuntimeDependencies['recordEvent'];
+    } = {};
+    this.#skillRuntime = new ExecutableSkillRegistry({
+      repository: this.#database,
+      runtimeVersion: options.version,
+      recordEvent: (event) => skillEventBridge.publish?.(event),
+    });
+    for (const skill of createInternalSkills(options.version, () =>
+      this.#skillRuntime.search({ query: '' }),
+    )) {
+      this.#skillRuntime.register(skill);
+    }
     this.#workflowRuntime = new DurableWorkflowRuntime({
       repository: this.#database,
       missionRuntime,
+      executors: this.#skillRuntime.workflowExecutors(),
       recordEvent: (event) => {
         workflowEventBridge.publish?.(event);
       },
@@ -72,11 +88,13 @@ export class DesktopCoreRuntime {
       chatRuntime,
       missionRuntime,
       workflowRuntime: this.#workflowRuntime,
+      skillRuntime: this.#skillRuntime,
     });
     missionEventBridge.publish = (event) =>
       this.#core.publishRuntimeEvent(event, 'mission-runtime');
     workflowEventBridge.publish = (event) =>
       this.#core.publishRuntimeEvent(event, 'workflow-runtime');
+    skillEventBridge.publish = (event) => this.#core.publishRuntimeEvent(event, 'skill-runtime');
     this.#core.registerService({
       serviceId: 'local-coordinator',
       version: options.version,
@@ -89,6 +107,7 @@ export class DesktopCoreRuntime {
         'chat.stream',
         'missions.manage',
         'workflows.manage',
+        'skills.manage',
       ],
       start: () => {
         if (options.forceServiceFailure === true) {
@@ -106,6 +125,11 @@ export class DesktopCoreRuntime {
 
   async start(signal: AbortSignal): Promise<DiagnosticsSnapshot> {
     const diagnostics = await this.#core.start(signal);
+    await Promise.all(
+      this.#skillRuntime
+        .search({ query: '' })
+        .map((entry) => this.#skillRuntime.healthCheck(entry.definition.skillId, signal)),
+    );
     await this.#workflowRuntime.recover();
     return diagnostics;
   }

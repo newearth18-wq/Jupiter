@@ -21,6 +21,8 @@ import {
   MissionTransitionSchema,
   MissionVerificationSchema,
   ProviderSummarySchema,
+  SkillExecutionRecordSchema,
+  SkillRegistryEntrySchema,
   WorkflowArtifactBindingSchema,
   WorkflowCheckpointSchema,
   WorkflowExecutionSchema,
@@ -44,6 +46,8 @@ import {
   type MissionTransition,
   type MissionVerification,
   type ProviderSummary,
+  type SkillExecutionRecord,
+  type SkillRegistryEntry,
   type WorkflowArtifactBinding,
   type WorkflowCheckpoint,
   type WorkflowExecution,
@@ -58,6 +62,7 @@ import type {
   EventStore,
   MissionRepository,
   ServiceHealthRepository,
+  SkillRepository,
   WorkflowRepository,
 } from '@jupiter/core';
 import { CURRENT_SCHEMA_VERSION, migrate } from './migrations.js';
@@ -87,7 +92,8 @@ export class JupiterDatabase
     DiagnosticsRepository,
     AiRepository,
     MissionRepository,
-    WorkflowRepository
+    WorkflowRepository,
+    SkillRepository
 {
   readonly #database: DatabaseSync;
   readonly #filePath: string;
@@ -1176,6 +1182,127 @@ export class JupiterDatabase
     );
   }
 
+  upsertSkill(entry: SkillRegistryEntry): void {
+    const valid = SkillRegistryEntrySchema.parse(entry);
+    const definition = valid.definition;
+    this.#database
+      .prepare(
+        `INSERT INTO skill_definitions (
+           skill_id, version, name, description, input_schema_json, output_schema_json,
+           permissions_json, timeout_ms, category, provider, compatible_runtime, enabled,
+           health, last_checked_at, sanitized_error, registered_at, updated_at
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(skill_id, version) DO UPDATE SET
+           name = excluded.name, description = excluded.description,
+           input_schema_json = excluded.input_schema_json,
+           output_schema_json = excluded.output_schema_json,
+           permissions_json = excluded.permissions_json, timeout_ms = excluded.timeout_ms,
+           category = excluded.category, provider = excluded.provider,
+           compatible_runtime = excluded.compatible_runtime, enabled = excluded.enabled,
+           health = excluded.health, last_checked_at = excluded.last_checked_at,
+           sanitized_error = excluded.sanitized_error, updated_at = excluded.updated_at`,
+      )
+      .run(
+        definition.skillId,
+        definition.version,
+        definition.name,
+        definition.description,
+        JSON.stringify(definition.inputSchema),
+        JSON.stringify(definition.outputSchema),
+        JSON.stringify(definition.permissions),
+        definition.timeoutMs,
+        definition.category,
+        definition.provider,
+        definition.compatibleRuntime,
+        valid.enabled ? 1 : 0,
+        valid.health,
+        valid.lastCheckedAt ?? null,
+        valid.sanitizedError ?? null,
+        valid.registeredAt,
+        valid.updatedAt,
+      );
+  }
+
+  removeSkill(skillId: string, version: string): void {
+    this.#database
+      .prepare('DELETE FROM skill_definitions WHERE skill_id = ? AND version = ?')
+      .run(skillId, version);
+  }
+
+  getSkill(skillId: string, version?: string): SkillRegistryEntry | undefined {
+    const row = version
+      ? this.#database
+          .prepare('SELECT * FROM skill_definitions WHERE skill_id = ? AND version = ?')
+          .get(skillId, version)
+      : this.#database
+          .prepare(
+            'SELECT * FROM skill_definitions WHERE skill_id = ? ORDER BY version DESC LIMIT 1',
+          )
+          .get(skillId);
+    return row ? this.#parseSkill(row) : undefined;
+  }
+
+  listSkills(): SkillRegistryEntry[] {
+    const rows = this.#database
+      .prepare('SELECT * FROM skill_definitions ORDER BY name, version DESC')
+      .all() as Record<string, unknown>[];
+    return rows.map((row) => this.#parseSkill(row));
+  }
+
+  addSkillExecution(execution: SkillExecutionRecord): void {
+    const valid = SkillExecutionRecordSchema.parse(execution);
+    this.#database
+      .prepare(
+        `INSERT INTO skill_executions (
+           execution_id, skill_id, version, mission_id, status, idempotency_key,
+           input_metadata_json, output_metadata_json, error_json, verification_hints_json,
+           started_at, completed_at
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(
+        valid.executionId,
+        valid.skillId,
+        valid.version,
+        valid.missionId,
+        valid.status,
+        valid.idempotencyKey,
+        JSON.stringify(valid.inputMetadata),
+        JSON.stringify(valid.outputMetadata),
+        valid.error ? JSON.stringify(valid.error) : null,
+        JSON.stringify(valid.verificationHints),
+        valid.startedAt,
+        valid.completedAt,
+      );
+  }
+
+  getSkillExecution(executionId: string): SkillExecutionRecord | undefined {
+    const row = this.#database
+      .prepare('SELECT * FROM skill_executions WHERE execution_id = ?')
+      .get(executionId);
+    return row ? this.#parseSkillExecution(row) : undefined;
+  }
+
+  getSkillExecutionByIdempotencyKey(
+    skillId: string,
+    idempotencyKey: string,
+  ): SkillExecutionRecord | undefined {
+    const row = this.#database
+      .prepare(
+        'SELECT * FROM skill_executions WHERE skill_id = ? AND idempotency_key = ? ORDER BY started_at DESC LIMIT 1',
+      )
+      .get(skillId, idempotencyKey);
+    return row ? this.#parseSkillExecution(row) : undefined;
+  }
+
+  listSkillExecutions(skillId?: string): SkillExecutionRecord[] {
+    const rows = skillId
+      ? this.#database
+          .prepare('SELECT * FROM skill_executions WHERE skill_id = ? ORDER BY started_at')
+          .all(skillId)
+      : this.#database.prepare('SELECT * FROM skill_executions ORDER BY started_at').all();
+    return (rows as Record<string, unknown>[]).map((row) => this.#parseSkillExecution(row));
+  }
+
   transaction<T>(work: () => T): T {
     this.#database.exec('BEGIN IMMEDIATE');
     try {
@@ -1347,6 +1474,48 @@ export class JupiterDatabase
       reason: row.reason,
       createdAt: row.created_at,
       ...(row.resolved_at === null ? {} : { resolvedAt: row.resolved_at }),
+    });
+  }
+
+  #parseSkill(row: Record<string, unknown>): SkillRegistryEntry {
+    return SkillRegistryEntrySchema.parse({
+      definition: {
+        skillId: row.skill_id,
+        version: row.version,
+        name: row.name,
+        description: row.description,
+        inputSchema: this.#parseJson(row.input_schema_json),
+        outputSchema: this.#parseJson(row.output_schema_json),
+        permissions: this.#parseJson(row.permissions_json),
+        timeoutMs: Number(row.timeout_ms),
+        category: row.category,
+        provider: row.provider,
+        compatibleRuntime: row.compatible_runtime,
+      },
+      enabled: Number(row.enabled) === 1,
+      health: row.health,
+      ...(row.last_checked_at === null ? {} : { lastCheckedAt: row.last_checked_at }),
+      ...(row.sanitized_error === null ? {} : { sanitizedError: row.sanitized_error }),
+      registeredAt: row.registered_at,
+      updatedAt: row.updated_at,
+    });
+  }
+
+  #parseSkillExecution(row: Record<string, unknown>): SkillExecutionRecord {
+    return SkillExecutionRecordSchema.parse({
+      executionId: row.execution_id,
+      skillId: row.skill_id,
+      missionId: row.mission_id,
+      version: row.version,
+      status: row.status,
+      artifacts: {},
+      ...(row.error_json === null ? {} : { error: this.#parseJson(row.error_json) }),
+      verificationHints: this.#parseJson(row.verification_hints_json),
+      startedAt: row.started_at,
+      completedAt: row.completed_at,
+      idempotencyKey: row.idempotency_key,
+      inputMetadata: this.#parseJson(row.input_metadata_json),
+      outputMetadata: this.#parseJson(row.output_metadata_json),
     });
   }
 

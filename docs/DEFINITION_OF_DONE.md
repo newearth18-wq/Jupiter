@@ -1,15 +1,17 @@
-# Definition of done — SET 5
+# Definition of done — SET 6
 
-SET 5 is done only when:
+SET 6 is done only when:
 
-- the full SET 0–4 verification remains green;
-- strict plan contracts include goal, assumptions, typed steps, skills, permissions, artifacts, verification, rationale, revision, and prior-plan linkage;
-- malformed plans, missing dependencies, cycles, unavailable skills, unapproved permissions, and ambiguous artifact flow are rejected before execution;
-- dependency order, safe parallel execution, conditions, bounded retry/backoff, timeout, pause/resume, cancellation propagation, checkpoints, artifact passing, idempotency, compensation, and verification use durable state;
-- restart recovery preserves the execution and idempotency key instead of creating duplicate logical work;
-- re-planning creates a linked immutable revision and retains failed history;
-- the Mission UI shows the real workflow graph, attempts, status, checkpoints, revision, assumptions, and verification plan, or a truthful `Not configured` state;
-- renderer actors can read and control existing workflows but cannot inject Planner output or resolve protected checkpoints;
+- the full SET 0–5 verification remains green;
+- valid Skills register with versioned metadata while invalid definitions and schemas are rejected;
+- input, output, permissions, timeout, enabled state, health, compatibility, and results are validated at the registry boundary;
+- `echo_text` returns exact input and all four required internal Skills are registered and healthy;
+- timeout and cancellation terminate or isolate invocation work and return structured terminal results;
+- disabled or permission-invalid Skills cannot enter their handler;
+- broken handlers and invalid output schemas become structured failures without crashing Core;
+- Skill execution history stores sanitized shape metadata rather than input/output values or secrets;
+- Workflow execution reaches Skills only through the typed registry adapter and invocation context;
+- Skill Center shows provider, category, enabled state, permissions, version, health, last check, runtime, search/filter, and safe internal tests using real Core data;
 - secret scan, format, lint, strict typecheck, unit tests, integration tests, production build, packaged smoke, and package validation pass;
-- no fake executor or SET 6 Skill Registry/Agent implementation has been started;
+- no SET 7 Agent runtime or later capability has been started;
 - evidence and limitations are reported from actual command output.

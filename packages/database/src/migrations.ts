@@ -359,6 +359,51 @@ export const MIGRATIONS: readonly Migration[] = [
       CREATE INDEX workflow_attempts_execution_idx ON workflow_step_attempts (workflow_execution_id, step_id, attempt);
     `,
   },
+  {
+    version: 6,
+    name: 'executable_skill_registry',
+    sql: `
+      CREATE TABLE skill_definitions (
+        skill_id TEXT NOT NULL,
+        version TEXT NOT NULL,
+        name TEXT NOT NULL,
+        description TEXT NOT NULL,
+        input_schema_json TEXT NOT NULL,
+        output_schema_json TEXT NOT NULL,
+        permissions_json TEXT NOT NULL,
+        timeout_ms INTEGER NOT NULL CHECK (timeout_ms >= 10),
+        category TEXT NOT NULL,
+        provider TEXT NOT NULL,
+        compatible_runtime TEXT NOT NULL,
+        enabled INTEGER NOT NULL CHECK (enabled IN (0, 1)),
+        health TEXT NOT NULL,
+        last_checked_at TEXT,
+        sanitized_error TEXT,
+        registered_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        PRIMARY KEY (skill_id, version)
+      ) STRICT;
+
+      CREATE TABLE skill_executions (
+        execution_id TEXT PRIMARY KEY,
+        skill_id TEXT NOT NULL,
+        version TEXT NOT NULL,
+        mission_id TEXT NOT NULL,
+        status TEXT NOT NULL,
+        idempotency_key TEXT NOT NULL,
+        input_metadata_json TEXT NOT NULL,
+        output_metadata_json TEXT NOT NULL,
+        error_json TEXT,
+        verification_hints_json TEXT NOT NULL,
+        started_at TEXT NOT NULL,
+        completed_at TEXT NOT NULL
+      ) STRICT;
+
+      CREATE INDEX skill_definitions_search_idx ON skill_definitions (enabled, health, category, name);
+      CREATE INDEX skill_executions_history_idx ON skill_executions (skill_id, started_at, execution_id);
+      CREATE INDEX skill_executions_idempotency_idx ON skill_executions (skill_id, idempotency_key, started_at);
+    `,
+  },
 ] as const;
 
 export const CURRENT_SCHEMA_VERSION = MIGRATIONS.at(-1)?.version ?? 0;

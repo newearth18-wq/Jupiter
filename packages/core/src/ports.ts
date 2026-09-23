@@ -29,6 +29,13 @@ import type {
   MissionVerification,
   MissionVerificationInput,
   MissionPlanSnapshot,
+  SkillDefinition,
+  SkillExecutionRecord,
+  SkillExecutionResult,
+  SkillInvocation,
+  SkillLookupInput,
+  SkillRegistryEntry,
+  SkillSearchInput,
   WorkflowArtifactBinding,
   WorkflowCheckpoint,
   WorkflowCheckpointResolveInput,
@@ -237,5 +244,55 @@ export type WorkflowRuntime = {
   replanWorkflow: (input: WorkflowReplanInput) => WorkflowDetail;
   resolveCheckpoint: (input: WorkflowCheckpointResolveInput) => Promise<WorkflowDetail>;
   recover: () => Promise<void>;
+  shutdown: () => Promise<void>;
+};
+
+export type SkillRepository = {
+  upsertSkill: (entry: SkillRegistryEntry) => void;
+  removeSkill: (skillId: string, version: string) => void;
+  getSkill: (skillId: string, version?: string) => SkillRegistryEntry | undefined;
+  listSkills: () => SkillRegistryEntry[];
+  addSkillExecution: (execution: SkillExecutionRecord) => void;
+  getSkillExecution: (executionId: string) => SkillExecutionRecord | undefined;
+  getSkillExecutionByIdempotencyKey: (
+    skillId: string,
+    idempotencyKey: string,
+  ) => SkillExecutionRecord | undefined;
+  listSkillExecutions: (skillId?: string) => SkillExecutionRecord[];
+};
+
+export type SkillHandlerContext = {
+  executionId: string;
+  missionId: string;
+  permissions: ReadonlySet<string>;
+  idempotencyKey: string;
+  signal: AbortSignal;
+};
+
+export type SkillHandlerResult = {
+  output: unknown;
+  artifacts?: Readonly<Record<string, unknown>>;
+  verificationHints?: readonly string[];
+};
+
+export type SkillExecutable = {
+  definition: SkillDefinition;
+  execute: (input: unknown, context: SkillHandlerContext) => Promise<SkillHandlerResult>;
+  healthCheck?: (signal: AbortSignal) => Promise<void>;
+};
+
+export type SkillRuntime = {
+  register: (skill: SkillExecutable) => SkillRegistryEntry;
+  unregister: (skillId: string, version: string) => boolean;
+  get: (input: SkillLookupInput) => SkillRegistryEntry | undefined;
+  search: (input: SkillSearchInput) => SkillRegistryEntry[];
+  enable: (skillId: string) => SkillRegistryEntry;
+  disable: (skillId: string) => SkillRegistryEntry;
+  healthCheck: (skillId: string, signal: AbortSignal) => Promise<SkillRegistryEntry>;
+  invoke: (invocation: SkillInvocation, signal: AbortSignal) => Promise<SkillExecutionResult>;
+  cancel: (executionId: string) => boolean;
+  listVersions: (skillId: string) => SkillRegistryEntry[];
+  listExecutions: (skillId?: string) => SkillExecutionRecord[];
+  workflowExecutors: () => WorkflowStepExecutor[];
   shutdown: () => Promise<void>;
 };

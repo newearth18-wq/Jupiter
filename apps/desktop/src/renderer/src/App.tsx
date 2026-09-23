@@ -29,6 +29,7 @@ import { createTranslator, preferredLanguage, type CopyKey, type Translator } fr
 import { ChatScreen } from './chat-screen.js';
 import { MissionScreen } from './mission-screen.js';
 import { ModelsScreen } from './models-screen.js';
+import { SkillCenter } from './skill-center.js';
 import { windowsNotificationBridge } from './notification-bridge.js';
 
 type DialogName = 'permission' | 'identity' | undefined;
@@ -51,11 +52,6 @@ const NAVIGATION: readonly { id: ScreenId; label: CopyKey; icon: string }[] = [
 const DEFERRED_SCREENS: Readonly<
   Partial<Record<ScreenId, { title: CopyKey; description: CopyKey; availability: CopyKey }>>
 > = {
-  skills: {
-    title: 'skillsTitle',
-    description: 'skillsDescription',
-    availability: 'comingLater',
-  },
   memory: {
     title: 'memoryTitle',
     description: 'memoryDescription',
@@ -422,6 +418,7 @@ function Screen({
   }
   if (view === 'chat') return <ChatScreen t={t} />;
   if (view === 'missions') return <MissionScreen language={preferences.language} />;
+  if (view === 'skills') return <SkillCenter language={preferences.language} />;
   if (view === 'models') return <ModelsScreen t={t} />;
   if (view === 'diagnostics') {
     return (

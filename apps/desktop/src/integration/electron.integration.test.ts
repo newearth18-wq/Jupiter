@@ -63,6 +63,17 @@ type SmokeEvidence = {
       planCreateCategory: string | null;
       unavailableVisible: boolean;
     };
+    skill: {
+      listStatus: string;
+      count: number;
+      allHealthy: boolean;
+      echoStatus: string;
+      echoExecutionStatus: string | null;
+      echoOutput: string | null;
+      centerVisible: boolean;
+      healthVisible: boolean;
+      safeTestVisible: boolean;
+    };
   };
   ai: {
     status?: string;
@@ -92,6 +103,7 @@ type SmokeEvidence = {
     motion: string | null;
     theme: string | null;
     missionCount: number;
+    skillCount: number;
   };
   responsive: {
     innerWidth: number;
@@ -102,6 +114,13 @@ type SmokeEvidence = {
     screenVisible: boolean;
   };
   keyboardNavigation: { activeNavigation: string | null };
+  skillWorkflow?: {
+    missionStatus: string;
+    planStatus: string;
+    executionStatus: string;
+    workflowStatus: string | null;
+    stepOutput: string | null;
+  };
   persistedWindowState: { width: number; height: number; maximized: boolean };
   webPreferences: {
     contextIsolation: boolean;
@@ -203,7 +222,7 @@ describe('packaged-shape Electron shell', () => {
     expect(evidence.renderer.diagnostics.status).toBe('success');
     expect(evidence.renderer.diagnostics.data?.database).toMatchObject({
       status: 'operational',
-      schemaVersion: 5,
+      schemaVersion: 6,
       integrity: 'ok',
     });
     expect(evidence.renderer.denied.status).toBe('error');
@@ -225,7 +244,25 @@ describe('packaged-shape Electron shell', () => {
       planCreateCategory: 'permission',
       unavailableVisible: true,
     });
+    expect(evidence.renderer.skill).toEqual({
+      listStatus: 'success',
+      count: 4,
+      allHealthy: true,
+      echoStatus: 'success',
+      echoExecutionStatus: 'SUCCESS',
+      echoOutput: 'exact smoke echo',
+      centerVisible: true,
+      healthVisible: true,
+      safeTestVisible: true,
+    });
     expect(evidence.renderer.eventCursor).toBeGreaterThan(0);
+    expect(evidence.skillWorkflow).toEqual({
+      missionStatus: 'success',
+      planStatus: 'success',
+      executionStatus: 'success',
+      workflowStatus: 'COMPLETED',
+      stepOutput: 'workflow echo',
+    });
     expect(evidence.reconnection.cursor).toBeGreaterThanOrEqual(evidence.renderer.eventCursor);
     expect(evidence.reconnection.replayedEventCount).toBe(0);
     expect(evidence.webPreferences).toEqual({
@@ -248,7 +285,7 @@ describe('packaged-shape Electron shell', () => {
     expect(evidence.renderer.screens).toHaveLength(12);
     expect(evidence.renderer.screens.every((screen) => screen.rendered && screen.title)).toBe(true);
     const deferred = evidence.renderer.screens.filter((screen) =>
-      ['skills', 'memory', 'files', 'automations', 'devices', 'plugins'].includes(screen.id),
+      ['memory', 'files', 'automations', 'devices', 'plugins'].includes(screen.id),
     );
     expect(deferred.every((screen) => screen.availability !== null)).toBe(true);
     expect(evidence.renderer.thaiText).toMatchObject({
@@ -273,6 +310,7 @@ describe('packaged-shape Electron shell', () => {
       motion: 'reduced',
       theme: 'midnight',
       missionCount: 1,
+      skillCount: 4,
     });
     expect(evidence.responsive.innerWidth).toBeGreaterThanOrEqual(600);
     expect(evidence.responsive.innerHeight).toBeGreaterThanOrEqual(320);
