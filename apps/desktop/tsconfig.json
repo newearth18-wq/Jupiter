@@ -5,6 +5,7 @@
     "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "types": ["electron-vite/node", "node", "vitest/globals"],
     "paths": {
+      "@jupiter/ai-runtime": ["../../services/ai-runtime/src/index.ts"],
       "@jupiter/contracts": ["../../packages/contracts/src/index.ts"],
       "@jupiter/core": ["../../packages/core/src/index.ts"],
       "@jupiter/database": ["../../packages/database/src/index.ts"],

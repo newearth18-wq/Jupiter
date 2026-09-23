@@ -1,16 +1,17 @@
-# Definition of done — SET 2
+# Definition of done — SET 3
 
-SET 2 is done only when:
+SET 3 is done only when:
 
-- the full SET 1 verification remains green;
-- all twelve destinations render in a real Electron renderer;
-- refresh preserves the selected view and typed UI/window preferences persist in SQLite;
-- English and Thai switch without restart and Thai text is not clipped;
-- keyboard navigation reaches controls, tabs use roving focus, and modal focus is trapped/restored;
-- Reduce Motion, Static Avatar, Hide Avatar, compact mode, and text scaling are functional;
-- layout has no horizontal overflow at the 1366×768/200% equivalent viewport;
-- Core and startup failures are represented truthfully;
-- unfinished features are disabled and labeled `Unavailable`, `Not configured`, or `Coming later`;
+- the full SET 0–2 verification remains green;
+- providers can be dynamically added and removed without provider-specific changes to Jupiter Core;
+- credentials are encrypted by OS-backed storage and never appear in renderer storage, SQLite, logs, or errors;
+- invalid authentication and provider outages produce clear sanitized failures;
+- model discovery and capability-aware routing support `AUTO`, `CLOUD`, `HYBRID`, and `LOCAL_ONLY`;
+- `LOCAL_ONLY` dispatches no cloud request, and fallback is policy-controlled, approved, and recorded;
+- Chat streams incrementally, Stop Generation aborts the active provider request, and retry/edit-resend are real;
+- conversations and messages survive a database close/reopen;
+- provider/model indicators, configuration actions, per-conversation routing, and structured tool-call display are available;
+- attachments remain disabled and truthful until Artifact Manager exists;
 - secret scan, format, lint, strict typecheck, unit tests, integration tests, production build, packaged smoke, and package validation pass;
-- no SET 3 provider/chat backend has been started;
+- no SET 4 Mission backend has been started;
 - evidence and limitations are reported from actual command output.

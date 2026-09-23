@@ -3,6 +3,9 @@ import { defineConfig } from 'electron-vite';
 import { fileURLToPath } from 'node:url';
 
 const aliases = {
+  '@jupiter/ai-runtime': fileURLToPath(
+    new URL('../../services/ai-runtime/src/index.ts', import.meta.url),
+  ),
   '@jupiter/contracts': fileURLToPath(
     new URL('../../packages/contracts/src/index.ts', import.meta.url),
   ),

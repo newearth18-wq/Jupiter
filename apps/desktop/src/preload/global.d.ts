@@ -1,5 +1,6 @@
 import type {
   BootstrapState,
+  ChatStreamEvent,
   DomainEvent,
   RpcRequestEnvelope,
   RpcResponseEnvelope,
@@ -13,6 +14,7 @@ declare global {
       request: (input: RpcRequestEnvelope) => Promise<RpcResponseEnvelope>;
       cancel: (requestId: string) => Promise<boolean>;
       onDomainEvent: (listener: (event: DomainEvent) => void) => () => void;
+      onChatStream: (listener: (event: ChatStreamEvent) => void) => () => void;
     }>;
   }
 }

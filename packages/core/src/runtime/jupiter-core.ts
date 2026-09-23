@@ -6,6 +6,7 @@ import {
   UiPreferencesSchema,
   UiPreferencesUpdateSchema,
   type Actor,
+  type ChatStreamEvent,
   type DiagnosticsSnapshot,
   type RpcResponseEnvelope,
 } from '@jupiter/contracts';
@@ -14,6 +15,7 @@ import { DomainEventBus, type DomainEventListener } from '../events/domain-event
 import type {
   AuditRepository,
   DiagnosticsRepository,
+  ChatRuntime,
   EventStore,
   SettingsRepository,
   ServiceHealthRepository,
@@ -28,6 +30,7 @@ export type JupiterCoreDependencies = {
   serviceHealthRepository: ServiceHealthRepository;
   diagnosticsRepository: DiagnosticsRepository;
   settingsRepository: SettingsRepository;
+  chatRuntime?: ChatRuntime;
 };
 
 export class JupiterCore {
@@ -38,6 +41,7 @@ export class JupiterCore {
   readonly #dispatcher: CapabilityDispatcher;
   readonly #gateway: RpcGateway;
   readonly #settingsRepository: SettingsRepository;
+  readonly #chatRuntime: ChatRuntime | undefined;
   #started = false;
 
   constructor(dependencies: JupiterCoreDependencies) {
@@ -46,6 +50,7 @@ export class JupiterCore {
     this.#services = new ServiceManager(dependencies.serviceHealthRepository, this.#events);
     this.#diagnosticsRepository = dependencies.diagnosticsRepository;
     this.#settingsRepository = dependencies.settingsRepository;
+    this.#chatRuntime = dependencies.chatRuntime;
     this.#dispatcher = new CapabilityDispatcher();
     this.#gateway = new RpcGateway(this.#dispatcher, dependencies.auditRepository);
     this.#registerCapabilities();
@@ -83,6 +88,7 @@ export class JupiterCore {
       occurredAt: new Date().toISOString(),
     });
     this.#started = false;
+    await this.#chatRuntime?.shutdown();
   }
 
   handleRpc(
@@ -95,6 +101,10 @@ export class JupiterCore {
 
   subscribe(listener: DomainEventListener): () => void {
     return this.#events.subscribe(listener);
+  }
+
+  subscribeChat(listener: (event: ChatStreamEvent) => void): () => void {
+    return this.#chatRuntime?.subscribe(listener) ?? (() => undefined);
   }
 
   getDiagnostics(): DiagnosticsSnapshot {
@@ -184,6 +194,58 @@ export class JupiterCore {
         });
         return preferences;
       },
+    });
+    if (this.#chatRuntime) this.#registerAiCapabilities(this.#chatRuntime);
+  }
+
+  #registerAiCapabilities(runtime: ChatRuntime): void {
+    const register = (
+      capability: string,
+      handler: Parameters<CapabilityDispatcher['register']>[0]['handler'],
+    ): void => {
+      this.#dispatcher.register({
+        capability,
+        allowedActors: ['renderer', 'core', 'test'],
+        handler,
+      });
+    };
+    register('providers.read', () => ({ providers: runtime.listProviders() }));
+    register('providers.configure', (input, context) =>
+      runtime.configureProvider(input as never, context.signal),
+    );
+    register('providers.remove', async (input) => ({
+      removed: await runtime.removeProvider((input as { providerId: string }).providerId),
+    }));
+    register('providers.validate', (input, context) =>
+      runtime.validateProvider((input as { providerId: string }).providerId, context.signal),
+    );
+    register('models.read', (input) => ({
+      models: runtime.listModels((input as { providerId?: string }).providerId),
+    }));
+    register('models.discover', async (input, context) => ({
+      models: await runtime.discoverModels(
+        (input as { providerId: string }).providerId,
+        context.signal,
+      ),
+    }));
+    register('ai.settings.read', () => runtime.getSettings());
+    register('ai.settings.write', (input) => runtime.updateSettings(input as never));
+    register('chat.history.read', (input) => {
+      if ('conversationId' in (input as object)) {
+        return runtime.getConversation((input as { conversationId: string }).conversationId);
+      }
+      return { conversations: runtime.listConversations() };
+    });
+    register('chat.conversation.create', (input) => runtime.createConversation(input as never));
+    register('chat.conversation.route', (input) => runtime.updateConversationRoute(input as never));
+    register('chat.send', (input, context) => {
+      if ('messageId' in (input as object) && 'content' in (input as object)) {
+        return runtime.editAndResend(input as never, context.correlation.requestId, context.signal);
+      }
+      if ('messageId' in (input as object)) {
+        return runtime.retry(input as never, context.correlation.requestId, context.signal);
+      }
+      return runtime.send(input as never, context.correlation.requestId, context.signal);
     });
   }
 

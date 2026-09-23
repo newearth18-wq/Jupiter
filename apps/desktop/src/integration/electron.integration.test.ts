@@ -1,6 +1,8 @@
 import { spawn } from 'node:child_process';
 import { createRequire } from 'node:module';
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs';
+import { createServer, type Server } from 'node:http';
+import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -44,6 +46,26 @@ type SmokeEvidence = {
     };
     denied: { status: string; error?: { category: string } };
   };
+  ai: {
+    status?: string;
+    configureStatus?: string;
+    credentialReturned?: boolean;
+    streamedDeltas?: string[];
+    uiStreamSnapshots?: string[];
+    uiComposerReady?: boolean;
+    uiSendReady?: boolean;
+    uiRequestStarted?: boolean;
+    completionStatus?: string;
+    completionText?: string | null;
+    cancelAccepted?: boolean;
+    cancelledStatus?: string;
+    cancelledCode?: string | null;
+    historyCount?: number;
+    providerState?: string | null;
+    rendererSecretExposure?: boolean;
+    conversationId?: string;
+  };
+  fileSecurity?: { rawSecretFound: boolean; credentialFileCount: number };
   reconnection: {
     cursor: number;
     replayedEventCount: number;
@@ -77,19 +99,29 @@ const desktopDirectory = resolve(dirname(fileURLToPath(import.meta.url)), '../..
 async function runElectron(options: {
   forceFoundationFailure?: boolean;
   forceServiceFailure?: boolean;
+  aiSmoke?: boolean;
 }): Promise<SmokeEvidence> {
   const directory = mkdtempSync(join(tmpdir(), 'jupiter-electron-smoke-'));
   const evidencePath = join(directory, 'evidence.json');
+  const credential = 'fixture-provider-credential-never-store-plain';
+  const fixture = options.aiSmoke ? await startAiFixture() : undefined;
   const child = spawn(electronPath, [desktopDirectory], {
     cwd: desktopDirectory,
     env: {
       ...process.env,
       JUPITER_APP_ENV: 'test',
       JUPITER_DATA_DIR: join(directory, 'data'),
+      JUPITER_LOG_DIR: join(directory, 'logs'),
       JUPITER_SMOKE_TEST: '1',
       JUPITER_SMOKE_EVIDENCE_PATH: evidencePath,
       JUPITER_FORCE_STARTUP_FAILURE: options.forceFoundationFailure ? '1' : '0',
       JUPITER_FORCE_SERVICE_FAILURE: options.forceServiceFailure ? '1' : '0',
+      ...(fixture === undefined
+        ? {}
+        : {
+            JUPITER_AI_SMOKE_BASE_URL: fixture.baseUrl,
+            JUPITER_AI_SMOKE_CREDENTIAL: credential,
+          }),
     },
     stdio: ['ignore', 'pipe', 'pipe'],
     windowsHide: true,
@@ -112,6 +144,17 @@ async function runElectron(options: {
 
   expect(exitCode, output.join('')).toBe(0);
   const evidence = JSON.parse(readFileSync(evidencePath, 'utf8')) as SmokeEvidence;
+  if (fixture) {
+    evidence.fileSecurity = {
+      rawSecretFound: filesBelow(directory).some((file) =>
+        readFileSync(file).includes(Buffer.from(credential)),
+      ),
+      credentialFileCount: filesBelow(join(directory, 'data', 'credentials')).filter((file) =>
+        file.endsWith('.credential'),
+      ).length,
+    };
+    await closeServer(fixture.server);
+  }
   rmSync(directory, { force: true, recursive: true });
   return evidence;
 }
@@ -128,6 +171,7 @@ describe('packaged-shape Electron shell', () => {
     expect(evidence.renderer.apiKeys).toEqual([
       'cancel',
       'getBootstrapState',
+      'onChatStream',
       'onDomainEvent',
       'request',
       'retryStartup',
@@ -140,7 +184,7 @@ describe('packaged-shape Electron shell', () => {
     expect(evidence.renderer.diagnostics.status).toBe('success');
     expect(evidence.renderer.diagnostics.data?.database).toMatchObject({
       status: 'operational',
-      schemaVersion: 2,
+      schemaVersion: 3,
       integrity: 'ok',
     });
     expect(evidence.renderer.denied.status).toBe('error');
@@ -168,17 +212,9 @@ describe('packaged-shape Electron shell', () => {
     expect(evidence.renderer.screens).toHaveLength(12);
     expect(evidence.renderer.screens.every((screen) => screen.rendered && screen.title)).toBe(true);
     const deferred = evidence.renderer.screens.filter((screen) =>
-      [
-        'chat',
-        'missions',
-        'skills',
-        'memory',
-        'files',
-        'automations',
-        'models',
-        'devices',
-        'plugins',
-      ].includes(screen.id),
+      ['missions', 'skills', 'memory', 'files', 'automations', 'devices', 'plugins'].includes(
+        screen.id,
+      ),
     );
     expect(deferred.every((screen) => screen.availability !== null)).toBe(true);
     expect(evidence.renderer.thaiText).toMatchObject({
@@ -216,6 +252,28 @@ describe('packaged-shape Electron shell', () => {
     });
   });
 
+  it('streams and cancels real chat against a configured compatible endpoint without leaking its credential', async () => {
+    const evidence = await runElectron({ aiSmoke: true });
+    expect(evidence.ai).toMatchObject({
+      configureStatus: 'success',
+      credentialReturned: false,
+      streamedDeltas: ['Hello ', 'Jupiter'],
+      uiStreamSnapshots: ['Hello ', 'Hello Jupiter'],
+      uiComposerReady: true,
+      uiSendReady: true,
+      uiRequestStarted: true,
+      completionStatus: 'success',
+      completionText: 'Hello Jupiter',
+      cancelAccepted: true,
+      cancelledStatus: 'error',
+      cancelledCode: 'REQUEST_CANCELLED',
+      providerState: 'valid',
+      rendererSecretExposure: false,
+    });
+    expect(evidence.ai.historyCount).toBeGreaterThanOrEqual(4);
+    expect(evidence.fileSecurity).toEqual({ rawSecretFound: false, credentialFileCount: 1 });
+  });
+
   it('isolates a Core service crash and exposes degraded health without exiting', async () => {
     const evidence = await runElectron({ forceServiceFailure: true });
     expect(evidence.bootstrapState.runtime.status).toBe('operational');
@@ -224,3 +282,60 @@ describe('packaged-shape Electron shell', () => {
     expect(evidence.renderer.status).toBeTruthy();
   });
 });
+
+async function startAiFixture(): Promise<{ server: Server; baseUrl: string }> {
+  const server = createServer((request, response) => {
+    if (request.method === 'GET' && request.url === '/v1/models') {
+      response.setHeader('Content-Type', 'application/json');
+      response.end(JSON.stringify({ data: [{ id: 'fixture-chat-model' }] }));
+      return;
+    }
+    if (request.method !== 'POST' || request.url !== '/v1/chat/completions') {
+      response.statusCode = 404;
+      response.end();
+      return;
+    }
+    const chunks: Buffer[] = [];
+    request.on('data', (chunk: Buffer) => chunks.push(chunk));
+    request.on('end', () => {
+      const body = Buffer.concat(chunks).toString('utf8');
+      const payload = JSON.parse(body) as { messages?: { content?: unknown }[] };
+      const latestContent = payload.messages?.at(-1)?.content;
+      response.statusCode = 200;
+      response.setHeader('Content-Type', 'text/event-stream');
+      if (latestContent === 'cancel fixture') {
+        response.write('data: {"choices":[{"delta":{"content":"partial"}}]}\n\n');
+        setTimeout(() => {
+          if (!response.destroyed) response.end('data: [DONE]\n\n');
+        }, 500);
+        return;
+      }
+      response.write('data: {"choices":[{"delta":{"content":"Hello "}}]}\n\n');
+      setTimeout(() => {
+        if (!response.destroyed) {
+          response.end('data: {"choices":[{"delta":{"content":"Jupiter"}}]}\n\ndata: [DONE]\n\n');
+        }
+      }, 120);
+    });
+  });
+  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+  const address = server.address() as AddressInfo;
+  return { server, baseUrl: `http://127.0.0.1:${address.port.toString()}/v1` };
+}
+
+function closeServer(server: Server): Promise<void> {
+  return new Promise((resolve, reject) => {
+    server.close((error) => (error ? reject(error) : resolve()));
+  });
+}
+
+function filesBelow(directory: string): string[] {
+  try {
+    return readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
+      const path = join(directory, entry.name);
+      return entry.isDirectory() ? filesBelow(path) : [path];
+    });
+  } catch {
+    return [];
+  }
+}

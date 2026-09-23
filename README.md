@@ -1,8 +1,8 @@
 # Jupiter
 
-Jupiter is a Windows-first desktop AI agent. This repository currently contains **SET 0 through SET 2**: the reproducible delivery foundation, secure Core coordination layer, SQLite persistence, and a localized accessible product shell built from Jupiter Visual Design Lock v1.
+Jupiter is a Windows-first desktop AI agent. This repository currently contains **SET 0 through SET 3**: the reproducible delivery foundation, secure Core coordination layer, SQLite persistence, localized accessible product shell, and a provider-agnostic AI/chat layer built within Jupiter Visual Design Lock v1.
 
-No AI, Mission execution, automation, browser, computer-control, plugin runtime, voice, vision, identity, or memory backend is implemented yet. Every corresponding SET 2 screen labels the capability `Unavailable`, `Not configured`, or `Coming later`; no deferred control reports simulated success.
+Chat becomes available only after the user configures and validates an installed OpenAI-compatible cloud or loopback provider. Provider credentials are encrypted by Electron `safeStorage` (Windows DPAPI), routing is policy-controlled, and conversations persist locally. Mission execution, automation, browser/computer control, plugin runtime, voice, identity, and memory backends remain unavailable and are labeled truthfully; no deferred control reports simulated success.
 
 ## Requirements
 

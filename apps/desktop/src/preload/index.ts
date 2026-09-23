@@ -3,12 +3,14 @@ import {
   BootstrapStateSchema,
   CONTRACT_SCHEMA_VERSION,
   CancelRequestSchema,
+  ChatStreamEventSchema,
   DomainEventSchema,
   RetryStartupRequestSchema,
   RpcRequestEnvelopeSchema,
   RpcResponseEnvelopeSchema,
   parseRpcSuccessData,
   type BootstrapState,
+  type ChatStreamEvent,
   type DomainEvent,
   type RpcRequestEnvelope,
   type RpcResponseEnvelope,
@@ -55,6 +57,13 @@ const api = Object.freeze({
     };
     ipcRenderer.on('jupiter:domain-event', wrapped);
     return () => ipcRenderer.removeListener('jupiter:domain-event', wrapped);
+  },
+  onChatStream(listener: (event: ChatStreamEvent) => void): () => void {
+    const wrapped = (_event: Electron.IpcRendererEvent, input: unknown): void => {
+      listener(ChatStreamEventSchema.parse(input));
+    };
+    ipcRenderer.on('jupiter:chat-stream', wrapped);
+    return () => ipcRenderer.removeListener('jupiter:chat-stream', wrapped);
   },
 });
 

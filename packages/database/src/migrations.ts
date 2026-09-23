@@ -67,6 +67,74 @@ export const MIGRATIONS: readonly Migration[] = [
       CREATE INDEX events_replay_idx ON events (sequence, occurred_at);
     `,
   },
+  {
+    version: 3,
+    name: 'ai_providers_models_and_conversations',
+    sql: `
+      CREATE TABLE ai_providers (
+        provider_id TEXT PRIMARY KEY,
+        display_name TEXT NOT NULL,
+        base_url TEXT NOT NULL,
+        locality TEXT NOT NULL CHECK (locality IN ('cloud', 'local')),
+        auth_scheme TEXT NOT NULL CHECK (auth_scheme IN ('bearer', 'none')),
+        enabled INTEGER NOT NULL CHECK (enabled IN (0, 1)),
+        capabilities_json TEXT NOT NULL,
+        auth_state TEXT NOT NULL,
+        health TEXT NOT NULL,
+        credential_fingerprint TEXT,
+        last_validated_at TEXT,
+        sanitized_error TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      ) STRICT;
+
+      CREATE TABLE ai_models (
+        provider_id TEXT NOT NULL,
+        model_id TEXT NOT NULL,
+        display_name TEXT NOT NULL,
+        capabilities_json TEXT NOT NULL,
+        context_window INTEGER,
+        input_cost_per_million REAL,
+        output_cost_per_million REAL,
+        discovered_at TEXT NOT NULL,
+        PRIMARY KEY (provider_id, model_id),
+        FOREIGN KEY (provider_id) REFERENCES ai_providers(provider_id) ON DELETE CASCADE
+      ) STRICT;
+
+      CREATE TABLE ai_settings (
+        singleton_id INTEGER PRIMARY KEY CHECK (singleton_id = 1),
+        settings_json TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      ) STRICT;
+
+      CREATE TABLE conversations (
+        conversation_id TEXT PRIMARY KEY,
+        title TEXT NOT NULL,
+        routing_override_json TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      ) STRICT;
+
+      CREATE TABLE chat_messages (
+        message_id TEXT PRIMARY KEY,
+        conversation_id TEXT NOT NULL,
+        role TEXT NOT NULL CHECK (role IN ('system', 'user', 'assistant', 'tool')),
+        content TEXT NOT NULL,
+        attachments_json TEXT NOT NULL,
+        tool_calls_json TEXT NOT NULL,
+        provider_id TEXT,
+        model_id TEXT,
+        status TEXT NOT NULL CHECK (status IN ('complete', 'streaming', 'cancelled', 'failed')),
+        usage_json TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        FOREIGN KEY (conversation_id) REFERENCES conversations(conversation_id) ON DELETE CASCADE
+      ) STRICT;
+
+      CREATE INDEX conversations_updated_idx ON conversations (updated_at DESC);
+      CREATE INDEX chat_messages_conversation_idx ON chat_messages (conversation_id, created_at, message_id);
+    `,
+  },
 ] as const;
 
 export const CURRENT_SCHEMA_VERSION = MIGRATIONS.at(-1)?.version ?? 0;

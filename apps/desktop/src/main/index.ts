@@ -8,6 +8,7 @@ import {
   RpcRequestEnvelopeSchema,
   RetryStartupRequestSchema,
   type BootstrapState,
+  type ChatStreamEvent,
   type DomainEvent,
 } from '@jupiter/contracts';
 import { StructuredLogger } from '@jupiter/core';
@@ -22,6 +23,7 @@ const IPC = {
   rpcRequest: 'jupiter:rpc:request',
   rpcCancel: 'jupiter:rpc:cancel',
   domainEvent: 'jupiter:domain-event',
+  chatStream: 'jupiter:chat-stream',
 } as const;
 
 let mainWindow: BrowserWindow | null = null;
@@ -29,6 +31,7 @@ let bootstrapState: BootstrapState;
 let logger: StructuredLogger | undefined;
 let coreRuntime: DesktopCoreRuntime | undefined;
 let unsubscribeCoreEvents: (() => void) | undefined;
+let unsubscribeChatEvents: (() => void) | undefined;
 let normalShutdownStarted = false;
 const activeRequests = new Map<string, AbortController>();
 let windowStateTimer: NodeJS.Timeout | undefined;
@@ -228,6 +231,12 @@ function broadcastDomainEvent(event: DomainEvent): void {
   }
 }
 
+function broadcastChatStream(event: ChatStreamEvent): void {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send(IPC.chatStream, event);
+  }
+}
+
 async function writeSmokeEvidence(window: BrowserWindow): Promise<void> {
   const evidencePath = process.env.JUPITER_SMOKE_EVIDENCE_PATH;
   if (!evidencePath) throw new Error('JUPITER_SMOKE_EVIDENCE_PATH is required in smoke mode.');
@@ -412,6 +421,179 @@ async function writeSmokeEvidence(window: BrowserWindow): Promise<void> {
       inspect();
     });
   `);
+  const aiSmokeBaseUrl = process.env.JUPITER_AI_SMOKE_BASE_URL;
+  const aiSmokeCredential = process.env.JUPITER_AI_SMOKE_CREDENTIAL;
+  const ai: unknown =
+    aiSmokeBaseUrl && aiSmokeCredential
+      ? await window.webContents.executeJavaScript(`
+        (async () => {
+          const baseUrl = ${JSON.stringify(aiSmokeBaseUrl)};
+          const credential = ${JSON.stringify(aiSmokeCredential)};
+          const makeContext = (requestId = crypto.randomUUID()) => ({
+            requestId,
+            actor: 'renderer',
+            timestamp: new Date().toISOString()
+          });
+          const configure = await window.jupiter.request({
+            schemaVersion: 1,
+            kind: 'command',
+            name: 'providers.configure',
+            context: makeContext(),
+            payload: {
+              providerId: 'fixture-provider',
+              displayName: 'Fixture Provider',
+              baseUrl,
+              locality: 'local',
+              authScheme: 'bearer',
+              enabled: true,
+              capabilities: ['chat', 'streaming', 'cancellation', 'usage'],
+              credential
+            }
+          });
+          const conversationResponse = await window.jupiter.request({
+            schemaVersion: 1,
+            kind: 'command',
+            name: 'chat.conversation.create',
+            context: makeContext(),
+            payload: { title: 'Smoke conversation' }
+          });
+          if (configure.status !== 'success' || conversationResponse.status !== 'success') {
+            return { configure, conversationResponse };
+          }
+          const conversationId = conversationResponse.data.conversationId;
+          const deltas = [];
+          const firstRequestId = crypto.randomUUID();
+          const unsubscribeFirst = window.jupiter.onChatStream((event) => {
+            if (event.requestId === firstRequestId && event.type === 'delta') {
+              deltas.push(event.delta ?? '');
+            }
+          });
+          const completion = await window.jupiter.request({
+            schemaVersion: 1,
+            kind: 'command',
+            name: 'chat.send',
+            context: makeContext(firstRequestId),
+            payload: { conversationId, content: 'stream fixture', attachments: [] }
+          });
+          unsubscribeFirst();
+
+          const cancelRequestId = crypto.randomUUID();
+          let cancelAccepted = false;
+          const unsubscribeCancel = window.jupiter.onChatStream((event) => {
+            if (event.requestId === cancelRequestId && event.type === 'delta') {
+              void window.jupiter.cancel(cancelRequestId).then((accepted) => {
+                cancelAccepted = accepted;
+              });
+            }
+          });
+          const cancelled = await window.jupiter.request({
+            schemaVersion: 1,
+            kind: 'command',
+            name: 'chat.send',
+            context: makeContext(cancelRequestId),
+            payload: { conversationId, content: 'cancel fixture', attachments: [] }
+          });
+          unsubscribeCancel();
+          const history = await window.jupiter.request({
+            schemaVersion: 1,
+            kind: 'query',
+            name: 'chat.conversation.get',
+            context: makeContext(),
+            payload: { conversationId }
+          });
+          const providers = await window.jupiter.request({
+            schemaVersion: 1,
+            kind: 'query',
+            name: 'providers.list',
+            context: makeContext(),
+            payload: {}
+          });
+          const wait = (duration) => new Promise((resolveWait) => setTimeout(resolveWait, duration));
+          location.hash = '#/chat';
+          const uiReadyStarted = Date.now();
+          let composer;
+          while (Date.now() - uiReadyStarted < 3000) {
+            composer = document.querySelector('[data-testid="chat-composer"]');
+            if (composer instanceof HTMLTextAreaElement && !composer.disabled) break;
+            await wait(20);
+          }
+          const uiStreamSnapshots = [];
+          const uiComposerReady = composer instanceof HTMLTextAreaElement && !composer.disabled;
+          let uiSendReady = false;
+          let uiRequestStarted = false;
+          if (composer instanceof HTMLTextAreaElement) {
+            const valueSetter = Object.getOwnPropertyDescriptor(
+              HTMLTextAreaElement.prototype,
+              'value'
+            )?.set;
+            valueSetter?.call(composer, 'ui stream fixture');
+            composer.dispatchEvent(
+              new InputEvent('input', {
+                bubbles: true,
+                data: 'ui stream fixture',
+                inputType: 'insertText'
+              })
+            );
+            composer.dispatchEvent(new Event('change', { bubbles: true }));
+            const sendReadyStarted = Date.now();
+            let sendButton;
+            while (Date.now() - sendReadyStarted < 1000) {
+              sendButton = document.querySelector('[data-testid="chat-send"]');
+              if (sendButton instanceof HTMLButtonElement && !sendButton.disabled) break;
+              await wait(10);
+            }
+            if (sendButton instanceof HTMLButtonElement && !sendButton.disabled) {
+              uiSendReady = true;
+              sendButton.click();
+            }
+            const streamStarted = Date.now();
+            while (Date.now() - streamStarted < 3000) {
+              const content = document.querySelector(
+                '[data-testid="chat-stream-output"] p'
+              )?.textContent;
+              if (content?.startsWith('Hello') && uiStreamSnapshots.at(-1) !== content) {
+                uiStreamSnapshots.push(content);
+              }
+              if (
+                uiStreamSnapshots.length > 0 &&
+                document.querySelector('[data-testid="stop-generation"]') === null
+              ) break;
+              if (document.querySelector('[data-testid="stop-generation"]') !== null) {
+                uiRequestStarted = true;
+              }
+              await wait(10);
+            }
+          }
+          const visibleState = [
+            localStorage.getItem('providers'),
+            sessionStorage.getItem('providers'),
+            document.body.textContent
+          ].filter(Boolean).join(' ');
+          return {
+            configureStatus: configure.status,
+            credentialReturned: JSON.stringify(configure).includes(credential),
+            streamedDeltas: deltas,
+            uiStreamSnapshots,
+            uiComposerReady,
+            uiSendReady,
+            uiRequestStarted,
+            completionStatus: completion.status,
+            completionText: completion.status === 'success'
+              ? completion.data.assistantMessage.content
+              : null,
+            cancelAccepted,
+            cancelledStatus: cancelled.status,
+            cancelledCode: cancelled.status === 'error' ? cancelled.error.code : null,
+            historyCount: history.status === 'success' ? history.data.messages.length : -1,
+            providerState: providers.status === 'success'
+              ? providers.data.providers[0]?.authState ?? null
+              : null,
+            rendererSecretExposure: visibleState.includes(credential),
+            conversationId
+          };
+        })()
+      `)
+      : { status: 'not_configured' };
   const reloaded = new Promise<void>((resolveReload) => {
     window.webContents.once('did-finish-load', () => resolveReload());
   });
@@ -496,6 +678,7 @@ async function writeSmokeEvidence(window: BrowserWindow): Promise<void> {
     timestamp: new Date().toISOString(),
     bootstrapState,
     renderer,
+    ai,
     reconnection,
     responsive,
     keyboardNavigation,
@@ -547,7 +730,11 @@ if (!hasInstanceLock) {
   void app
     .whenReady()
     .then(async () => {
-      logger = new StructuredLogger({ filePath: join(app.getPath('logs'), 'jupiter.jsonl') });
+      const logDirectory =
+        process.env.JUPITER_APP_ENV === 'test' && process.env.JUPITER_LOG_DIR
+          ? process.env.JUPITER_LOG_DIR
+          : app.getPath('logs');
+      logger = new StructuredLogger({ filePath: join(logDirectory, 'jupiter.jsonl') });
       installProcessGuards();
       bootstrapState = createState();
       const correlationId = bootstrapState.correlationId;
@@ -569,6 +756,7 @@ if (!hasInstanceLock) {
         forceServiceFailure: process.env.JUPITER_FORCE_SERVICE_FAILURE === '1',
       });
       unsubscribeCoreEvents = coreRuntime.subscribe(broadcastDomainEvent);
+      unsubscribeChatEvents = coreRuntime.subscribeChat(broadcastChatStream);
       const diagnostics = await coreRuntime.start(new AbortController().signal);
       logger.log(
         diagnostics.status === 'operational' ? 'info' : 'warn',
@@ -593,6 +781,7 @@ app.on('before-quit', (event) => {
   event.preventDefault();
   normalShutdownStarted = true;
   unsubscribeCoreEvents?.();
+  unsubscribeChatEvents?.();
   for (const controller of activeRequests.values()) controller.abort();
   void coreRuntime
     .shutdown()
@@ -608,5 +797,6 @@ app.on('before-quit', (event) => {
 });
 app.on('will-quit', () => {
   unsubscribeCoreEvents?.();
+  unsubscribeChatEvents?.();
   for (const controller of activeRequests.values()) controller.abort();
 });

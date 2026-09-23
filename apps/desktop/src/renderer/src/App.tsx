@@ -23,6 +23,8 @@ import {
 } from '@jupiter/ui';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createTranslator, preferredLanguage, type CopyKey, type Translator } from './copy.js';
+import { ChatScreen } from './chat-screen.js';
+import { ModelsScreen } from './models-screen.js';
 import { windowsNotificationBridge } from './notification-bridge.js';
 
 type DialogName = 'permission' | 'identity' | undefined;
@@ -45,7 +47,6 @@ const NAVIGATION: readonly { id: ScreenId; label: CopyKey; icon: string }[] = [
 const DEFERRED_SCREENS: Readonly<
   Partial<Record<ScreenId, { title: CopyKey; description: CopyKey; availability: CopyKey }>>
 > = {
-  chat: { title: 'chatTitle', description: 'chatDescription', availability: 'notConfigured' },
   missions: {
     title: 'missionsTitle',
     description: 'missionsDescription',
@@ -70,11 +71,6 @@ const DEFERRED_SCREENS: Readonly<
     title: 'automationsTitle',
     description: 'automationsDescription',
     availability: 'comingLater',
-  },
-  models: {
-    title: 'modelsTitle',
-    description: 'modelsDescription',
-    availability: 'notConfigured',
   },
   devices: {
     title: 'devicesTitle',
@@ -425,6 +421,8 @@ function Screen({
       />
     );
   }
+  if (view === 'chat') return <ChatScreen t={t} />;
+  if (view === 'models') return <ModelsScreen t={t} />;
   if (view === 'diagnostics') {
     return (
       <DiagnosticsScreen
@@ -446,7 +444,6 @@ function Screen({
         title={t(screen.title)}
         description={t(screen.description)}
       />
-      {view === 'chat' && <ChatComposer t={t} />}
       <Surface>
         <EmptyState
           description={t(screen.description)}
@@ -751,12 +748,22 @@ function ChatComposer({ t }: { t: Translator }): React.JSX.Element {
     <Surface className="composer-shell">
       <label htmlFor="jupiter-composer">{t('composerLabel')}</label>
       <div>
-        <textarea disabled id="jupiter-composer" placeholder={t('composerPlaceholder')} rows={2} />
-        <Button disabled type="button">
-          {t('send')}
+        <textarea
+          disabled
+          id="jupiter-composer"
+          placeholder={t('composerReadyPlaceholder')}
+          rows={2}
+        />
+        <Button
+          type="button"
+          onClick={() => {
+            window.location.hash = '#/chat';
+          }}
+        >
+          {t('openChat')}
         </Button>
       </div>
-      <StatusBadge tone="warning">{t('notConfigured')}</StatusBadge>
+      <StatusBadge tone="neutral">{t('providerAuto')}</StatusBadge>
     </Surface>
   );
 }

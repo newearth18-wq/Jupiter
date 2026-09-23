@@ -1,5 +1,6 @@
 import { join } from 'node:path';
 import {
+  type ChatStreamEvent,
   WindowStateSchema,
   type Actor,
   type DiagnosticsSnapshot,
@@ -9,6 +10,8 @@ import {
 } from '@jupiter/contracts';
 import { JupiterCore, type DomainEventListener } from '@jupiter/core';
 import { JupiterDatabase } from '@jupiter/database';
+import { ProviderAgnosticChatRuntime } from '@jupiter/ai-runtime';
+import { DpapiCredentialVault } from './dpapi-credential-vault.js';
 
 export type DesktopCoreRuntimeOptions = {
   dataDirectory: string;
@@ -23,6 +26,17 @@ export class DesktopCoreRuntime {
 
   constructor(options: DesktopCoreRuntimeOptions) {
     this.#database = JupiterDatabase.open(join(options.dataDirectory, 'jupiter.db'));
+    const chatRuntime = new ProviderAgnosticChatRuntime({
+      repository: this.#database,
+      credentialVault: new DpapiCredentialVault(join(options.dataDirectory, 'credentials')),
+      recordEvent: (event) => {
+        this.#database.append({
+          ...event,
+          actor: 'service',
+          source: 'ai-runtime',
+        });
+      },
+    });
     this.#core = new JupiterCore({
       version: options.version,
       eventStore: this.#database,
@@ -30,11 +44,19 @@ export class DesktopCoreRuntime {
       serviceHealthRepository: this.#database,
       diagnosticsRepository: this.#database,
       settingsRepository: this.#database,
+      chatRuntime,
     });
     this.#core.registerService({
       serviceId: 'local-coordinator',
       version: options.version,
-      capabilities: ['core.rpc', 'diagnostics.read', 'events.replay'],
+      capabilities: [
+        'core.rpc',
+        'diagnostics.read',
+        'events.replay',
+        'providers.configure',
+        'models.route',
+        'chat.stream',
+      ],
       start: () => {
         if (options.forceServiceFailure === true) {
           throw new Error('Controlled local coordinator failure.');
@@ -63,6 +85,10 @@ export class DesktopCoreRuntime {
 
   subscribe(listener: DomainEventListener): () => void {
     return this.#core.subscribe(listener);
+  }
+
+  subscribeChat(listener: (event: ChatStreamEvent) => void): () => void {
+    return this.#core.subscribeChat(listener);
   }
 
   getDiagnostics(): DiagnosticsSnapshot {

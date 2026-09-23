@@ -4,7 +4,7 @@
 - The preload surface is narrow, frozen, typed, and backed by allowlisted IPC only.
 - Validate inputs and outputs at trust boundaries.
 - Treat documents, webpages, downloads, model output, and plugin content as untrusted data.
-- Never persist or log secrets in plaintext. Production credentials will use OS-backed secure storage when provider configuration is introduced.
+- Never persist or log secrets in plaintext. Provider credentials use Electron `safeStorage` backed by Windows DPAPI and are kept outside SQLite, logs, renderer storage, crash evidence, and exported settings.
 - Logs are structured, bounded by rotation, correlated, and recursively redacted.
 - Do not execute third-party plugins in Electron Main or Renderer.
 - Never silently delete user-created data.
@@ -13,6 +13,8 @@
 
 Do not open a public issue containing a vulnerability, secret, or user data. Share a minimal sanitized reproduction with the repository owner through their private security channel.
 
-## SET 2 boundary
+## SET 3 credential and provider boundary
 
-SET 2 contains no credential collection, external network integration, plugin execution, or arbitrary user-file access. UI preferences cross the existing fixed preload method as strict Core capabilities and contain no secrets. Permission and identity dialogs are truthful unavailable shells; they cannot grant authority or collect identity data. The Windows notification bridge reports unavailable and does not simulate native delivery.
+Only Electron Main can read the encrypted credential vault. Credential values are accepted by the validated provider-configuration RPC and are cleared from renderer form state after submission; only authentication state, validation time, and a short fingerprint return. Provider HTTP failures are mapped to bounded sanitized errors without response bodies. Cloud endpoints require HTTPS, local endpoints require loopback addresses, and URLs containing credentials, query strings, or fragments are rejected.
+
+`LOCAL_ONLY` removes cloud providers before dispatch, so chat data cannot reach a cloud adapter under that mode. Fallback is opt-in and constrained by policy; local-to-cloud switching is never silent. Provider/model output and structured tool-call data remain untrusted data and SET 3 never executes tool calls. Plugin execution and arbitrary user-file access remain unavailable.

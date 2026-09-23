@@ -23,6 +23,21 @@ const CAPABILITIES: Readonly<Record<RpcRequestName, string>> = {
   'core.health.refresh': 'core.health.refresh',
   'ui.preferences.get': 'ui.preferences.read',
   'ui.preferences.update': 'ui.preferences.write',
+  'providers.list': 'providers.read',
+  'providers.configure': 'providers.configure',
+  'providers.remove': 'providers.remove',
+  'providers.validate': 'providers.validate',
+  'models.list': 'models.read',
+  'models.discover': 'models.discover',
+  'ai.settings.get': 'ai.settings.read',
+  'ai.settings.update': 'ai.settings.write',
+  'chat.conversations.list': 'chat.history.read',
+  'chat.conversation.create': 'chat.conversation.create',
+  'chat.conversation.get': 'chat.history.read',
+  'chat.conversation.route': 'chat.conversation.route',
+  'chat.send': 'chat.send',
+  'chat.retry': 'chat.send',
+  'chat.edit_resend': 'chat.send',
 };
 
 export class RpcGateway {

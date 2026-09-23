@@ -81,6 +81,8 @@ importers:
         specifier: '>=19'
         version: 19.3.0(react@19.3.0)
 
+  services/ai-runtime: {}
+
 packages:
 
   '@babel/code-frame@7.29.7':

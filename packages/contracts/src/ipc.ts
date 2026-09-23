@@ -3,6 +3,26 @@ import { CONTRACT_SCHEMA_VERSION, CorrelationContextSchema } from './common.js';
 import { DiagnosticsSnapshotSchema } from './diagnostics.js';
 import { ErrorEnvelopeSchema } from './errors.js';
 import { DomainEventSchema } from './events.js';
+import {
+  AiSettingsSchema,
+  AiSettingsUpdateSchema,
+  ChatEditResendInputSchema,
+  ChatRetryInputSchema,
+  ChatSendInputSchema,
+  ChatSendResultSchema,
+  ConversationCreateInputSchema,
+  ConversationDetailSchema,
+  ConversationIdSchema,
+  ConversationListResultSchema,
+  ConversationRouteInputSchema,
+  ConversationSchema,
+  ModelListResultSchema,
+  ProviderConfigureInputSchema,
+  ProviderIdSchema,
+  ProviderListResultSchema,
+  ProviderSummarySchema,
+  ProviderValidationResultSchema,
+} from './ai.js';
 import { UiPreferencesSchema, UiPreferencesUpdateSchema } from './ui.js';
 
 const EmptyPayloadSchema = z.object({}).strict();
@@ -72,6 +92,66 @@ const UiPreferencesUpdateRequestSchema = z
   })
   .strict();
 
+const ProviderListRequestSchema = rpcRequest('query', 'providers.list', EmptyPayloadSchema);
+const ProviderConfigureRequestSchema = rpcRequest(
+  'command',
+  'providers.configure',
+  ProviderConfigureInputSchema,
+);
+const ProviderRemoveRequestSchema = rpcRequest(
+  'command',
+  'providers.remove',
+  z.object({ providerId: ProviderIdSchema }).strict(),
+);
+const ProviderValidateRequestSchema = rpcRequest(
+  'command',
+  'providers.validate',
+  z.object({ providerId: ProviderIdSchema }).strict(),
+);
+const ModelsListRequestSchema = rpcRequest(
+  'query',
+  'models.list',
+  z.object({ providerId: ProviderIdSchema.optional() }).strict(),
+);
+const ModelsDiscoverRequestSchema = rpcRequest(
+  'command',
+  'models.discover',
+  z.object({ providerId: ProviderIdSchema }).strict(),
+);
+const AiSettingsGetRequestSchema = rpcRequest('query', 'ai.settings.get', EmptyPayloadSchema);
+const AiSettingsUpdateRequestSchema = rpcRequest(
+  'command',
+  'ai.settings.update',
+  AiSettingsUpdateSchema,
+);
+const ConversationsListRequestSchema = rpcRequest(
+  'query',
+  'chat.conversations.list',
+  EmptyPayloadSchema,
+);
+const ConversationCreateRequestSchema = rpcRequest(
+  'command',
+  'chat.conversation.create',
+  ConversationCreateInputSchema,
+);
+const ConversationGetRequestSchema = rpcRequest(
+  'query',
+  'chat.conversation.get',
+  z.object({ conversationId: ConversationIdSchema }).strict(),
+);
+const ConversationRouteRequestSchema = rpcRequest(
+  'command',
+  'chat.conversation.route',
+  ConversationRouteInputSchema,
+);
+const ChatSendRequestSchema = rpcRequest('command', 'chat.send', ChatSendInputSchema);
+const ChatRetryRequestSchema = rpcRequest('command', 'chat.retry', ChatRetryInputSchema);
+const ChatEditResendRequestSchema = rpcRequest(
+  'command',
+  'chat.edit_resend',
+  ChatEditResendInputSchema,
+);
+
 export const RpcRequestEnvelopeSchema = z.discriminatedUnion('name', [
   CorePingRequestSchema,
   DiagnosticsGetRequestSchema,
@@ -79,6 +159,21 @@ export const RpcRequestEnvelopeSchema = z.discriminatedUnion('name', [
   CoreHealthRefreshRequestSchema,
   UiPreferencesGetRequestSchema,
   UiPreferencesUpdateRequestSchema,
+  ProviderListRequestSchema,
+  ProviderConfigureRequestSchema,
+  ProviderRemoveRequestSchema,
+  ProviderValidateRequestSchema,
+  ModelsListRequestSchema,
+  ModelsDiscoverRequestSchema,
+  AiSettingsGetRequestSchema,
+  AiSettingsUpdateRequestSchema,
+  ConversationsListRequestSchema,
+  ConversationCreateRequestSchema,
+  ConversationGetRequestSchema,
+  ConversationRouteRequestSchema,
+  ChatSendRequestSchema,
+  ChatRetryRequestSchema,
+  ChatEditResendRequestSchema,
 ]);
 
 export const RpcRequestNameSchema = z.enum([
@@ -88,6 +183,21 @@ export const RpcRequestNameSchema = z.enum([
   'core.health.refresh',
   'ui.preferences.get',
   'ui.preferences.update',
+  'providers.list',
+  'providers.configure',
+  'providers.remove',
+  'providers.validate',
+  'models.list',
+  'models.discover',
+  'ai.settings.get',
+  'ai.settings.update',
+  'chat.conversations.list',
+  'chat.conversation.create',
+  'chat.conversation.get',
+  'chat.conversation.route',
+  'chat.send',
+  'chat.retry',
+  'chat.edit_resend',
 ]);
 
 export const RpcSuccessEnvelopeSchema = z
@@ -154,7 +264,48 @@ export function parseRpcSuccessData(
     case 'ui.preferences.get':
     case 'ui.preferences.update':
       return UiPreferencesSchema.parse(data);
+    case 'providers.list':
+      return ProviderListResultSchema.parse(data);
+    case 'providers.configure':
+      return ProviderSummarySchema.parse(data);
+    case 'providers.remove':
+      return z.object({ removed: z.boolean() }).strict().parse(data);
+    case 'providers.validate':
+      return ProviderValidationResultSchema.parse(data);
+    case 'models.list':
+    case 'models.discover':
+      return ModelListResultSchema.parse(data);
+    case 'ai.settings.get':
+    case 'ai.settings.update':
+      return AiSettingsSchema.parse(data);
+    case 'chat.conversations.list':
+      return ConversationListResultSchema.parse(data);
+    case 'chat.conversation.create':
+    case 'chat.conversation.route':
+      return ConversationSchema.parse(data);
+    case 'chat.conversation.get':
+      return ConversationDetailSchema.parse(data);
+    case 'chat.send':
+    case 'chat.retry':
+    case 'chat.edit_resend':
+      return ChatSendResultSchema.parse(data);
   }
+}
+
+function rpcRequest<TKind extends 'query' | 'command', TName extends string>(
+  kind: TKind,
+  name: TName,
+  payload: z.ZodType,
+) {
+  return z
+    .object({
+      schemaVersion: z.literal(CONTRACT_SCHEMA_VERSION),
+      kind: z.literal(kind),
+      name: z.literal(name),
+      context: CorrelationContextSchema,
+      payload,
+    })
+    .strict();
 }
 
 export type RpcRequestEnvelope = z.infer<typeof RpcRequestEnvelopeSchema>;
