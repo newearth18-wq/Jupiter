@@ -21,6 +21,12 @@ import {
   MissionTransitionSchema,
   MissionVerificationSchema,
   ProviderSummarySchema,
+  WorkflowArtifactBindingSchema,
+  WorkflowCheckpointSchema,
+  WorkflowExecutionSchema,
+  WorkflowPlanSchema,
+  WorkflowStepAttemptSchema,
+  WorkflowStepSchema,
   type AiSettings,
   type AuditEvent,
   type CoreServiceHealth,
@@ -38,6 +44,11 @@ import {
   type MissionTransition,
   type MissionVerification,
   type ProviderSummary,
+  type WorkflowArtifactBinding,
+  type WorkflowCheckpoint,
+  type WorkflowExecution,
+  type WorkflowPlan,
+  type WorkflowStepAttempt,
 } from '@jupiter/contracts';
 import type {
   AiRepository,
@@ -47,6 +58,7 @@ import type {
   EventStore,
   MissionRepository,
   ServiceHealthRepository,
+  WorkflowRepository,
 } from '@jupiter/core';
 import { CURRENT_SCHEMA_VERSION, migrate } from './migrations.js';
 
@@ -74,7 +86,8 @@ export class JupiterDatabase
     ServiceHealthRepository,
     DiagnosticsRepository,
     AiRepository,
-    MissionRepository
+    MissionRepository,
+    WorkflowRepository
 {
   readonly #database: DatabaseSync;
   readonly #filePath: string;
@@ -862,6 +875,307 @@ export class JupiterDatabase
     );
   }
 
+  createWorkflowPlan(plan: WorkflowPlan): void {
+    const valid = WorkflowPlanSchema.parse(plan);
+    this.#database
+      .prepare(
+        `INSERT INTO workflow_plans (
+           plan_id, mission_id, revision, prior_plan_id, goal, assumptions_json,
+           required_skills_json, required_permissions_json, expected_artifacts_json,
+           verification_plan_json, rationale, active, created_at
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(
+        valid.planId,
+        valid.missionId,
+        valid.revision,
+        valid.priorPlanId ?? null,
+        valid.goal,
+        JSON.stringify(valid.assumptions),
+        JSON.stringify(valid.requiredSkills),
+        JSON.stringify(valid.requiredPermissions),
+        JSON.stringify(valid.expectedArtifacts),
+        JSON.stringify(valid.verificationPlan),
+        valid.rationale,
+        valid.active ? 1 : 0,
+        valid.createdAt,
+      );
+    const insertStep = this.#database.prepare(
+      `INSERT INTO workflow_plan_steps (
+         step_id, plan_id, position, title, description, skill_id, dependencies_json,
+         input_json, timeout_ms, retry_policy_json, verification_json, status,
+         required_permissions_json, produces_artifacts_json, checkpoint, condition_json
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    );
+    valid.steps.forEach((step, position) => {
+      insertStep.run(
+        step.stepId,
+        valid.planId,
+        position,
+        step.title,
+        step.description,
+        step.skillId,
+        JSON.stringify(step.dependencies),
+        JSON.stringify(step.input),
+        step.timeoutMs,
+        JSON.stringify(step.retryPolicy),
+        JSON.stringify(step.verification),
+        step.status,
+        JSON.stringify(step.requiredPermissions),
+        JSON.stringify(step.producesArtifacts),
+        step.checkpoint,
+        step.condition === undefined ? null : JSON.stringify(step.condition),
+      );
+    });
+  }
+
+  setWorkflowPlanActive(planId: string, active: boolean): void {
+    this.#database
+      .prepare('UPDATE workflow_plans SET active = ? WHERE plan_id = ?')
+      .run(active ? 1 : 0, planId);
+  }
+
+  getWorkflowPlan(planId: string): WorkflowPlan | undefined {
+    const row = this.#database
+      .prepare('SELECT * FROM workflow_plans WHERE plan_id = ?')
+      .get(planId) as Record<string, unknown> | undefined;
+    return row === undefined ? undefined : this.#parseWorkflowPlan(row);
+  }
+
+  getActiveWorkflowPlan(missionId: string): WorkflowPlan | undefined {
+    const row = this.#database
+      .prepare('SELECT * FROM workflow_plans WHERE mission_id = ? AND active = 1')
+      .get(missionId) as Record<string, unknown> | undefined;
+    return row === undefined ? undefined : this.#parseWorkflowPlan(row);
+  }
+
+  listWorkflowPlans(missionId: string): WorkflowPlan[] {
+    const rows = this.#database
+      .prepare('SELECT * FROM workflow_plans WHERE mission_id = ? ORDER BY revision')
+      .all(missionId) as Record<string, unknown>[];
+    return rows.map((row) => this.#parseWorkflowPlan(row));
+  }
+
+  createWorkflowExecution(execution: WorkflowExecution): void {
+    const valid = WorkflowExecutionSchema.parse(execution);
+    this.#database
+      .prepare(
+        `INSERT INTO workflow_executions (
+           workflow_execution_id, plan_id, mission_id, status, started_at, updated_at,
+           ended_at, pause_requested, cancel_requested, failure_reason
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(
+        valid.workflowExecutionId,
+        valid.planId,
+        valid.missionId,
+        valid.status,
+        valid.startedAt,
+        valid.updatedAt,
+        valid.endedAt ?? null,
+        valid.pauseRequested ? 1 : 0,
+        valid.cancelRequested ? 1 : 0,
+        valid.failureReason ?? null,
+      );
+  }
+
+  updateWorkflowExecution(execution: WorkflowExecution): void {
+    const valid = WorkflowExecutionSchema.parse(execution);
+    this.#database
+      .prepare(
+        `UPDATE workflow_executions SET
+           status = ?, updated_at = ?, ended_at = ?, pause_requested = ?,
+           cancel_requested = ?, failure_reason = ?
+         WHERE workflow_execution_id = ?`,
+      )
+      .run(
+        valid.status,
+        valid.updatedAt,
+        valid.endedAt ?? null,
+        valid.pauseRequested ? 1 : 0,
+        valid.cancelRequested ? 1 : 0,
+        valid.failureReason ?? null,
+        valid.workflowExecutionId,
+      );
+  }
+
+  getWorkflowExecution(workflowExecutionId: string): WorkflowExecution | undefined {
+    const row = this.#database
+      .prepare('SELECT * FROM workflow_executions WHERE workflow_execution_id = ?')
+      .get(workflowExecutionId) as Record<string, unknown> | undefined;
+    return row === undefined ? undefined : this.#parseWorkflowExecution(row);
+  }
+
+  getLatestWorkflowExecution(missionId: string): WorkflowExecution | undefined {
+    const row = this.#database
+      .prepare(
+        `SELECT * FROM workflow_executions
+         WHERE mission_id = ? ORDER BY started_at DESC, workflow_execution_id DESC LIMIT 1`,
+      )
+      .get(missionId) as Record<string, unknown> | undefined;
+    return row === undefined ? undefined : this.#parseWorkflowExecution(row);
+  }
+
+  listRecoverableWorkflowExecutions(): WorkflowExecution[] {
+    const rows = this.#database
+      .prepare(
+        `SELECT * FROM workflow_executions
+         WHERE status IN ('PENDING', 'RUNNING', 'WAITING') ORDER BY started_at`,
+      )
+      .all() as Record<string, unknown>[];
+    return rows.map((row) => this.#parseWorkflowExecution(row));
+  }
+
+  upsertWorkflowStepAttempt(attempt: WorkflowStepAttempt): void {
+    const valid = WorkflowStepAttemptSchema.parse(attempt);
+    this.#database
+      .prepare(
+        `INSERT INTO workflow_step_attempts (
+           step_attempt_id, workflow_execution_id, step_id, attempt, status,
+           idempotency_key, input_json, output_json, verification_passed,
+           verification_summary, sanitized_error, started_at, completed_at
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(step_attempt_id) DO UPDATE SET
+           status = excluded.status, output_json = excluded.output_json,
+           verification_passed = excluded.verification_passed,
+           verification_summary = excluded.verification_summary,
+           sanitized_error = excluded.sanitized_error, completed_at = excluded.completed_at`,
+      )
+      .run(
+        valid.stepAttemptId,
+        valid.workflowExecutionId,
+        valid.stepId,
+        valid.attempt,
+        valid.status,
+        valid.idempotencyKey,
+        JSON.stringify(valid.input),
+        valid.output === undefined ? null : JSON.stringify(valid.output),
+        valid.verificationPassed === undefined ? null : valid.verificationPassed ? 1 : 0,
+        valid.verificationSummary ?? null,
+        valid.sanitizedError ?? null,
+        valid.startedAt,
+        valid.completedAt ?? null,
+      );
+  }
+
+  listWorkflowStepAttempts(workflowExecutionId: string): WorkflowStepAttempt[] {
+    const rows = this.#database
+      .prepare(
+        `SELECT * FROM workflow_step_attempts
+         WHERE workflow_execution_id = ? ORDER BY started_at, step_id, attempt`,
+      )
+      .all(workflowExecutionId) as Record<string, unknown>[];
+    return rows.map((row) =>
+      WorkflowStepAttemptSchema.parse({
+        stepAttemptId: row.step_attempt_id,
+        workflowExecutionId: row.workflow_execution_id,
+        stepId: row.step_id,
+        attempt: Number(row.attempt),
+        status: row.status,
+        idempotencyKey: row.idempotency_key,
+        input: this.#parseJson(row.input_json),
+        ...(row.output_json === null ? {} : { output: this.#parseJson(row.output_json) }),
+        ...(row.verification_passed === null
+          ? {}
+          : { verificationPassed: Number(row.verification_passed) === 1 }),
+        ...(row.verification_summary === null
+          ? {}
+          : { verificationSummary: row.verification_summary }),
+        ...(row.sanitized_error === null ? {} : { sanitizedError: row.sanitized_error }),
+        startedAt: row.started_at,
+        ...(row.completed_at === null ? {} : { completedAt: row.completed_at }),
+      }),
+    );
+  }
+
+  createWorkflowCheckpoint(checkpoint: WorkflowCheckpoint): void {
+    const valid = WorkflowCheckpointSchema.parse(checkpoint);
+    this.#database
+      .prepare(
+        `INSERT INTO workflow_checkpoints (
+           checkpoint_id, workflow_execution_id, step_id, kind, status, reason,
+           created_at, resolved_at
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(
+        valid.checkpointId,
+        valid.workflowExecutionId,
+        valid.stepId,
+        valid.kind,
+        valid.status,
+        valid.reason,
+        valid.createdAt,
+        valid.resolvedAt ?? null,
+      );
+  }
+
+  updateWorkflowCheckpoint(checkpoint: WorkflowCheckpoint): void {
+    const valid = WorkflowCheckpointSchema.parse(checkpoint);
+    this.#database
+      .prepare(
+        `UPDATE workflow_checkpoints SET status = ?, reason = ?, resolved_at = ?
+         WHERE checkpoint_id = ?`,
+      )
+      .run(valid.status, valid.reason, valid.resolvedAt ?? null, valid.checkpointId);
+  }
+
+  getWorkflowCheckpoint(checkpointId: string): WorkflowCheckpoint | undefined {
+    const row = this.#database
+      .prepare('SELECT * FROM workflow_checkpoints WHERE checkpoint_id = ?')
+      .get(checkpointId) as Record<string, unknown> | undefined;
+    return row === undefined ? undefined : this.#parseWorkflowCheckpoint(row);
+  }
+
+  listWorkflowCheckpoints(workflowExecutionId: string): WorkflowCheckpoint[] {
+    const rows = this.#database
+      .prepare(
+        `SELECT * FROM workflow_checkpoints
+         WHERE workflow_execution_id = ? ORDER BY created_at, checkpoint_id`,
+      )
+      .all(workflowExecutionId) as Record<string, unknown>[];
+    return rows.map((row) => this.#parseWorkflowCheckpoint(row));
+  }
+
+  addWorkflowArtifactBinding(binding: WorkflowArtifactBinding): void {
+    const valid = WorkflowArtifactBindingSchema.parse(binding);
+    this.#database
+      .prepare(
+        `INSERT INTO workflow_artifact_bindings (
+           binding_id, workflow_execution_id, step_id, artifact_key, value_json, created_at
+         ) VALUES (?, ?, ?, ?, ?, ?)
+         ON CONFLICT(workflow_execution_id, artifact_key) DO UPDATE SET
+           step_id = excluded.step_id, value_json = excluded.value_json,
+           created_at = excluded.created_at`,
+      )
+      .run(
+        valid.bindingId,
+        valid.workflowExecutionId,
+        valid.stepId,
+        valid.artifactKey,
+        JSON.stringify(valid.value ?? null),
+        valid.createdAt,
+      );
+  }
+
+  listWorkflowArtifactBindings(workflowExecutionId: string): WorkflowArtifactBinding[] {
+    const rows = this.#database
+      .prepare(
+        `SELECT * FROM workflow_artifact_bindings
+         WHERE workflow_execution_id = ? ORDER BY created_at, artifact_key`,
+      )
+      .all(workflowExecutionId) as Record<string, unknown>[];
+    return rows.map((row) =>
+      WorkflowArtifactBindingSchema.parse({
+        bindingId: row.binding_id,
+        workflowExecutionId: row.workflow_execution_id,
+        stepId: row.step_id,
+        artifactKey: row.artifact_key,
+        value: this.#parseJson(row.value_json),
+        createdAt: row.created_at,
+      }),
+    );
+  }
+
   transaction<T>(work: () => T): T {
     this.#database.exec('BEGIN IMMEDIATE');
     try {
@@ -964,6 +1278,75 @@ export class JupiterDatabase
       ...(row.archived_at === null ? {} : { archivedAt: row.archived_at }),
       createdAt: row.created_at,
       updatedAt: row.updated_at,
+    });
+  }
+
+  #parseWorkflowPlan(row: Record<string, unknown>): WorkflowPlan {
+    const stepRows = this.#database
+      .prepare('SELECT * FROM workflow_plan_steps WHERE plan_id = ? ORDER BY position')
+      .all(String(row.plan_id)) as Record<string, unknown>[];
+    return WorkflowPlanSchema.parse({
+      planId: row.plan_id,
+      missionId: row.mission_id,
+      revision: Number(row.revision),
+      ...(row.prior_plan_id === null ? {} : { priorPlanId: row.prior_plan_id }),
+      goal: row.goal,
+      assumptions: this.#parseJson(row.assumptions_json),
+      steps: stepRows.map((step) =>
+        WorkflowStepSchema.parse({
+          stepId: step.step_id,
+          title: step.title,
+          description: step.description,
+          skillId: step.skill_id,
+          dependencies: this.#parseJson(step.dependencies_json),
+          input: this.#parseJson(step.input_json),
+          timeoutMs: Number(step.timeout_ms),
+          retryPolicy: this.#parseJson(step.retry_policy_json),
+          verification: this.#parseJson(step.verification_json),
+          status: step.status,
+          requiredPermissions: this.#parseJson(step.required_permissions_json),
+          producesArtifacts: this.#parseJson(step.produces_artifacts_json),
+          checkpoint: step.checkpoint,
+          ...(step.condition_json === null
+            ? {}
+            : { condition: this.#parseJson(step.condition_json) }),
+        }),
+      ),
+      requiredSkills: this.#parseJson(row.required_skills_json),
+      requiredPermissions: this.#parseJson(row.required_permissions_json),
+      expectedArtifacts: this.#parseJson(row.expected_artifacts_json),
+      verificationPlan: this.#parseJson(row.verification_plan_json),
+      rationale: row.rationale,
+      active: Number(row.active) === 1,
+      createdAt: row.created_at,
+    });
+  }
+
+  #parseWorkflowExecution(row: Record<string, unknown>): WorkflowExecution {
+    return WorkflowExecutionSchema.parse({
+      workflowExecutionId: row.workflow_execution_id,
+      planId: row.plan_id,
+      missionId: row.mission_id,
+      status: row.status,
+      startedAt: row.started_at,
+      updatedAt: row.updated_at,
+      ...(row.ended_at === null ? {} : { endedAt: row.ended_at }),
+      pauseRequested: Number(row.pause_requested) === 1,
+      cancelRequested: Number(row.cancel_requested) === 1,
+      ...(row.failure_reason === null ? {} : { failureReason: row.failure_reason }),
+    });
+  }
+
+  #parseWorkflowCheckpoint(row: Record<string, unknown>): WorkflowCheckpoint {
+    return WorkflowCheckpointSchema.parse({
+      checkpointId: row.checkpoint_id,
+      workflowExecutionId: row.workflow_execution_id,
+      stepId: row.step_id,
+      kind: row.kind,
+      status: row.status,
+      reason: row.reason,
+      createdAt: row.created_at,
+      ...(row.resolved_at === null ? {} : { resolvedAt: row.resolved_at }),
     });
   }
 

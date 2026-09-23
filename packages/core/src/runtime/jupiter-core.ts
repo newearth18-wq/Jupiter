@@ -9,6 +9,10 @@ import {
   type ChatStreamEvent,
   type DiagnosticsSnapshot,
   type RpcResponseEnvelope,
+  type WorkflowCheckpointResolveInput,
+  type WorkflowControlInput,
+  type WorkflowPlanCreateInput,
+  type WorkflowReplanInput,
 } from '@jupiter/contracts';
 import { CapabilityDispatcher } from '../capabilities/capability-dispatcher.js';
 import { DomainEventBus, type DomainEventListener } from '../events/domain-event-bus.js';
@@ -21,6 +25,7 @@ import type {
   MissionRuntime,
   SettingsRepository,
   ServiceHealthRepository,
+  WorkflowRuntime,
 } from '../ports.js';
 import { RpcGateway } from '../rpc/rpc-gateway.js';
 import { ServiceManager, type ManagedService } from '../services/service-manager.js';
@@ -34,6 +39,7 @@ export type JupiterCoreDependencies = {
   settingsRepository: SettingsRepository;
   chatRuntime?: ChatRuntime;
   missionRuntime?: MissionRuntime;
+  workflowRuntime?: WorkflowRuntime;
 };
 
 export class JupiterCore {
@@ -46,6 +52,7 @@ export class JupiterCore {
   readonly #settingsRepository: SettingsRepository;
   readonly #chatRuntime: ChatRuntime | undefined;
   readonly #missionRuntime: MissionRuntime | undefined;
+  readonly #workflowRuntime: WorkflowRuntime | undefined;
   #started = false;
 
   constructor(dependencies: JupiterCoreDependencies) {
@@ -56,6 +63,7 @@ export class JupiterCore {
     this.#settingsRepository = dependencies.settingsRepository;
     this.#chatRuntime = dependencies.chatRuntime;
     this.#missionRuntime = dependencies.missionRuntime;
+    this.#workflowRuntime = dependencies.workflowRuntime;
     this.#dispatcher = new CapabilityDispatcher();
     this.#gateway = new RpcGateway(this.#dispatcher, dependencies.auditRepository);
     this.#registerCapabilities();
@@ -93,7 +101,11 @@ export class JupiterCore {
       occurredAt: new Date().toISOString(),
     });
     this.#started = false;
-    await Promise.all([this.#chatRuntime?.shutdown(), this.#missionRuntime?.shutdown()]);
+    await Promise.all([
+      this.#chatRuntime?.shutdown(),
+      this.#workflowRuntime?.shutdown(),
+      this.#missionRuntime?.shutdown(),
+    ]);
   }
 
   handleRpc(
@@ -214,6 +226,38 @@ export class JupiterCore {
     });
     if (this.#chatRuntime) this.#registerAiCapabilities(this.#chatRuntime);
     if (this.#missionRuntime) this.#registerMissionCapabilities(this.#missionRuntime);
+    if (this.#workflowRuntime) this.#registerWorkflowCapabilities(this.#workflowRuntime);
+  }
+
+  #registerWorkflowCapabilities(runtime: WorkflowRuntime): void {
+    const register = (
+      capability: string,
+      handler: Parameters<CapabilityDispatcher['register']>[0]['handler'],
+      allowedActors: Actor[] = ['renderer', 'core', 'test'],
+    ): void => this.#dispatcher.register({ capability, allowedActors, handler });
+    register('workflows.read', (input) => ({
+      workflow: runtime.getWorkflow((input as { missionId: string }).missionId) ?? null,
+    }));
+    register(
+      'workflows.plan.create',
+      (input) => {
+        const payload = input as WorkflowPlanCreateInput;
+        return runtime.createPlan(payload.missionId, payload.modelOutput);
+      },
+      ['core', 'test'],
+    );
+    register('workflows.start', (input) => runtime.startWorkflow(input as WorkflowControlInput));
+    register('workflows.resume', (input) => runtime.resumeWorkflow(input as WorkflowControlInput));
+    register('workflows.cancel', (input) => runtime.cancelWorkflow(input as WorkflowControlInput));
+    register('workflows.replan', (input) => runtime.replanWorkflow(input as WorkflowReplanInput), [
+      'core',
+      'test',
+    ]);
+    register(
+      'workflows.checkpoint.resolve',
+      (input) => runtime.resolveCheckpoint(input as WorkflowCheckpointResolveInput),
+      ['core', 'test'],
+    );
   }
 
   #registerMissionCapabilities(runtime: MissionRuntime): void {

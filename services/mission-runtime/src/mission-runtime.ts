@@ -14,6 +14,7 @@ import {
   type MissionDetail,
   type MissionErrorInput,
   type MissionExecution,
+  type MissionPlanSnapshot,
   type MissionStatus,
   type MissionStepUpsertInput,
   type MissionTimelineEntry,
@@ -35,10 +36,18 @@ export const ALLOWED_MISSION_TRANSITIONS: Readonly<
   CREATED: ['ANALYZING', 'CANCELLED'],
   ANALYZING: ['PLANNING', 'FAILED', 'CANCELLED'],
   PLANNING: ['WAITING_APPROVAL', 'WAITING_IDENTITY', 'READY', 'FAILED', 'CANCELLED'],
-  WAITING_APPROVAL: ['READY', 'FAILED', 'CANCELLED'],
-  WAITING_IDENTITY: ['READY', 'FAILED', 'CANCELLED'],
+  WAITING_APPROVAL: ['READY', 'RUNNING', 'FAILED', 'CANCELLED'],
+  WAITING_IDENTITY: ['READY', 'RUNNING', 'FAILED', 'CANCELLED'],
   READY: ['RUNNING', 'CANCELLED'],
-  RUNNING: ['PAUSED', 'VERIFYING', 'PARTIAL_SUCCESS', 'FAILED', 'CANCELLED'],
+  RUNNING: [
+    'WAITING_APPROVAL',
+    'WAITING_IDENTITY',
+    'PAUSED',
+    'VERIFYING',
+    'PARTIAL_SUCCESS',
+    'FAILED',
+    'CANCELLED',
+  ],
   PAUSED: ['RUNNING', 'CANCELLED'],
   VERIFYING: ['COMPLETED', 'PARTIAL_SUCCESS', 'FAILED', 'CANCELLED'],
   COMPLETED: [],
@@ -355,6 +364,14 @@ export class DurableMissionRuntime implements MissionRuntime {
         executionId: execution.executionId,
         occurredAt: this.#timestamp(),
       }),
+    );
+    return this.getMissionDetail(missionId);
+  }
+
+  setPlanSnapshot(missionId: string, plan: MissionPlanSnapshot): MissionDetail {
+    const mission = this.#requiredMission(missionId);
+    this.#repository.updateMission(
+      MissionSchema.parse({ ...mission, plan, updatedAt: this.#timestamp() }),
     );
     return this.getMissionDetail(missionId);
   }

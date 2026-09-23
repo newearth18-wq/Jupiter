@@ -249,6 +249,116 @@ export const MIGRATIONS: readonly Migration[] = [
       CREATE INDEX mission_verifications_order_idx ON mission_verifications (mission_id, verified_at, verification_id);
     `,
   },
+  {
+    version: 5,
+    name: 'durable_plans_and_workflows',
+    sql: `
+      CREATE TABLE workflow_plans (
+        plan_id TEXT PRIMARY KEY,
+        mission_id TEXT NOT NULL,
+        revision INTEGER NOT NULL CHECK (revision > 0),
+        prior_plan_id TEXT,
+        goal TEXT NOT NULL,
+        assumptions_json TEXT NOT NULL,
+        required_skills_json TEXT NOT NULL,
+        required_permissions_json TEXT NOT NULL,
+        expected_artifacts_json TEXT NOT NULL,
+        verification_plan_json TEXT NOT NULL,
+        rationale TEXT NOT NULL,
+        active INTEGER NOT NULL CHECK (active IN (0, 1)),
+        created_at TEXT NOT NULL,
+        UNIQUE (mission_id, revision),
+        FOREIGN KEY (mission_id) REFERENCES missions(mission_id) ON DELETE CASCADE,
+        FOREIGN KEY (prior_plan_id) REFERENCES workflow_plans(plan_id)
+      ) STRICT;
+
+      CREATE TABLE workflow_plan_steps (
+        step_id TEXT PRIMARY KEY,
+        plan_id TEXT NOT NULL,
+        position INTEGER NOT NULL CHECK (position >= 0),
+        title TEXT NOT NULL,
+        description TEXT NOT NULL,
+        skill_id TEXT NOT NULL,
+        dependencies_json TEXT NOT NULL,
+        input_json TEXT NOT NULL,
+        timeout_ms INTEGER NOT NULL CHECK (timeout_ms >= 100),
+        retry_policy_json TEXT NOT NULL,
+        verification_json TEXT NOT NULL,
+        status TEXT NOT NULL,
+        required_permissions_json TEXT NOT NULL,
+        produces_artifacts_json TEXT NOT NULL,
+        checkpoint TEXT NOT NULL,
+        condition_json TEXT,
+        FOREIGN KEY (plan_id) REFERENCES workflow_plans(plan_id) ON DELETE CASCADE
+      ) STRICT;
+
+      CREATE TABLE workflow_executions (
+        workflow_execution_id TEXT PRIMARY KEY,
+        plan_id TEXT NOT NULL,
+        mission_id TEXT NOT NULL,
+        status TEXT NOT NULL,
+        started_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        ended_at TEXT,
+        pause_requested INTEGER NOT NULL CHECK (pause_requested IN (0, 1)),
+        cancel_requested INTEGER NOT NULL CHECK (cancel_requested IN (0, 1)),
+        failure_reason TEXT,
+        FOREIGN KEY (plan_id) REFERENCES workflow_plans(plan_id),
+        FOREIGN KEY (mission_id) REFERENCES missions(mission_id) ON DELETE CASCADE
+      ) STRICT;
+
+      CREATE TABLE workflow_step_attempts (
+        step_attempt_id TEXT PRIMARY KEY,
+        workflow_execution_id TEXT NOT NULL,
+        step_id TEXT NOT NULL,
+        attempt INTEGER NOT NULL CHECK (attempt > 0),
+        status TEXT NOT NULL,
+        idempotency_key TEXT NOT NULL,
+        input_json TEXT NOT NULL,
+        output_json TEXT,
+        verification_passed INTEGER,
+        verification_summary TEXT,
+        sanitized_error TEXT,
+        started_at TEXT NOT NULL,
+        completed_at TEXT,
+        UNIQUE (workflow_execution_id, step_id, attempt),
+        FOREIGN KEY (workflow_execution_id) REFERENCES workflow_executions(workflow_execution_id) ON DELETE CASCADE,
+        FOREIGN KEY (step_id) REFERENCES workflow_plan_steps(step_id)
+      ) STRICT;
+
+      CREATE TABLE workflow_checkpoints (
+        checkpoint_id TEXT PRIMARY KEY,
+        workflow_execution_id TEXT NOT NULL,
+        step_id TEXT NOT NULL,
+        kind TEXT NOT NULL,
+        status TEXT NOT NULL,
+        reason TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        resolved_at TEXT,
+        UNIQUE (workflow_execution_id, step_id),
+        FOREIGN KEY (workflow_execution_id) REFERENCES workflow_executions(workflow_execution_id) ON DELETE CASCADE,
+        FOREIGN KEY (step_id) REFERENCES workflow_plan_steps(step_id)
+      ) STRICT;
+
+      CREATE TABLE workflow_artifact_bindings (
+        binding_id TEXT PRIMARY KEY,
+        workflow_execution_id TEXT NOT NULL,
+        step_id TEXT NOT NULL,
+        artifact_key TEXT NOT NULL,
+        value_json TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        UNIQUE (workflow_execution_id, artifact_key),
+        FOREIGN KEY (workflow_execution_id) REFERENCES workflow_executions(workflow_execution_id) ON DELETE CASCADE,
+        FOREIGN KEY (step_id) REFERENCES workflow_plan_steps(step_id)
+      ) STRICT;
+
+      CREATE INDEX workflow_plans_mission_revision_idx ON workflow_plans (mission_id, revision);
+      CREATE UNIQUE INDEX workflow_plans_one_active_idx ON workflow_plans (mission_id) WHERE active = 1;
+      CREATE INDEX workflow_steps_plan_position_idx ON workflow_plan_steps (plan_id, position);
+      CREATE INDEX workflow_executions_mission_idx ON workflow_executions (mission_id, started_at);
+      CREATE INDEX workflow_attempts_execution_idx ON workflow_step_attempts (workflow_execution_id, step_id, attempt);
+    `,
+  },
 ] as const;
 
 export const CURRENT_SCHEMA_VERSION = MIGRATIONS.at(-1)?.version ?? 0;

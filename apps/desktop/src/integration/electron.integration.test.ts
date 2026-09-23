@@ -56,6 +56,13 @@ type SmokeEvidence = {
       timelineCount: number;
       detailVisible: boolean;
     };
+    workflow: {
+      lookupStatus: string;
+      configured: boolean | null;
+      planCreateStatus: string;
+      planCreateCategory: string | null;
+      unavailableVisible: boolean;
+    };
   };
   ai: {
     status?: string;
@@ -196,7 +203,7 @@ describe('packaged-shape Electron shell', () => {
     expect(evidence.renderer.diagnostics.status).toBe('success');
     expect(evidence.renderer.diagnostics.data?.database).toMatchObject({
       status: 'operational',
-      schemaVersion: 4,
+      schemaVersion: 5,
       integrity: 'ok',
     });
     expect(evidence.renderer.denied.status).toBe('error');
@@ -211,6 +218,13 @@ describe('packaged-shape Electron shell', () => {
       detailVisible: true,
     });
     expect(evidence.renderer.mission.timelineCount).toBeGreaterThanOrEqual(5);
+    expect(evidence.renderer.workflow).toEqual({
+      lookupStatus: 'success',
+      configured: false,
+      planCreateStatus: 'error',
+      planCreateCategory: 'permission',
+      unavailableVisible: true,
+    });
     expect(evidence.renderer.eventCursor).toBeGreaterThan(0);
     expect(evidence.reconnection.cursor).toBeGreaterThanOrEqual(evidence.renderer.eventCursor);
     expect(evidence.reconnection.replayedEventCount).toBe(0);

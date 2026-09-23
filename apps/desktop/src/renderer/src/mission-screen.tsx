@@ -1,14 +1,18 @@
 import {
   MissionDetailSchema,
   MissionListResultSchema,
+  WorkflowDetailSchema,
+  WorkflowLookupResultSchema,
   type Language,
   type Mission,
   type MissionDetail,
   type MissionPriority,
   type MissionStatus,
+  type WorkflowDetail,
 } from '@jupiter/contracts';
 import { Button, EmptyState, StatusBadge, Surface } from '@jupiter/ui';
 import { useCallback, useEffect, useState } from 'react';
+import { WorkflowVisualizer } from './workflow-visualizer.js';
 
 const COPY = {
   en: {
@@ -121,6 +125,7 @@ export function MissionScreen({ language }: { language: Language }): React.JSX.E
   const [missions, setMissions] = useState<Mission[]>([]);
   const [selectedId, setSelectedId] = useState<string>();
   const [detail, setDetail] = useState<MissionDetail>();
+  const [workflow, setWorkflow] = useState<WorkflowDetail | null>(null);
   const [title, setTitle] = useState('');
   const [request, setRequest] = useState('');
   const [priority, setPriority] = useState<MissionPriority>('NORMAL');
@@ -129,15 +134,26 @@ export function MissionScreen({ language }: { language: Language }): React.JSX.E
   const [notice, setNotice] = useState<string>();
 
   const loadDetail = useCallback(async (missionId: string): Promise<void> => {
-    const response = await window.jupiter.request({
-      schemaVersion: 1,
-      kind: 'query',
-      name: 'missions.get',
-      context: context(missionId),
-      payload: { missionId },
-    });
-    if (response.status === 'error') throw new Error(response.error.message);
-    setDetail(MissionDetailSchema.parse(response.data));
+    const [missionResponse, workflowResponse] = await Promise.all([
+      window.jupiter.request({
+        schemaVersion: 1,
+        kind: 'query',
+        name: 'missions.get',
+        context: context(missionId),
+        payload: { missionId },
+      }),
+      window.jupiter.request({
+        schemaVersion: 1,
+        kind: 'query',
+        name: 'workflows.get',
+        context: context(missionId),
+        payload: { missionId },
+      }),
+    ]);
+    if (missionResponse.status === 'error') throw new Error(missionResponse.error.message);
+    if (workflowResponse.status === 'error') throw new Error(workflowResponse.error.message);
+    setDetail(MissionDetailSchema.parse(missionResponse.data));
+    setWorkflow(WorkflowLookupResultSchema.parse(workflowResponse.data).workflow);
   }, []);
 
   const load = useCallback(async (): Promise<void> => {
@@ -158,7 +174,10 @@ export function MissionScreen({ language }: { language: Language }): React.JSX.E
         : next[0]?.missionId;
       setSelectedId(nextSelected);
       if (nextSelected) await loadDetail(nextSelected);
-      else setDetail(undefined);
+      else {
+        setDetail(undefined);
+        setWorkflow(null);
+      }
     } catch (loadError) {
       setError(messageOf(loadError));
     }
@@ -201,10 +220,40 @@ export function MissionScreen({ language }: { language: Language }): React.JSX.E
       setRequest('');
       setSelectedId(created.mission.missionId);
       setDetail(created);
+      setWorkflow(null);
       setNotice(copy.createdTruth);
       await load();
     } catch (createError) {
       setError(messageOf(createError));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const controlWorkflow = async (action: 'start' | 'resume' | 'cancel'): Promise<void> => {
+    if (!detail) return;
+    setBusy(true);
+    setError(undefined);
+    setNotice(undefined);
+    try {
+      const missionId = detail.mission.missionId;
+      const response = await window.jupiter.request({
+        schemaVersion: 1,
+        kind: 'command',
+        name:
+          action === 'start'
+            ? 'workflows.start'
+            : action === 'resume'
+              ? 'workflows.resume'
+              : 'workflows.cancel',
+        context: context(missionId),
+        payload: { missionId },
+      });
+      if (response.status === 'error') throw new Error(response.error.message);
+      setWorkflow(WorkflowDetailSchema.parse(response.data));
+      await loadDetail(missionId);
+    } catch (controlError) {
+      setError(messageOf(controlError));
     } finally {
       setBusy(false);
     }
@@ -372,6 +421,8 @@ export function MissionScreen({ language }: { language: Language }): React.JSX.E
             language={language}
             busy={busy}
             onControl={control}
+            workflow={workflow}
+            onWorkflowControl={controlWorkflow}
           />
         ) : (
           <Surface>
@@ -389,12 +440,16 @@ function MissionDetailPanel({
   language,
   busy,
   onControl,
+  workflow,
+  onWorkflowControl,
 }: {
   copy: Copy;
   detail: MissionDetail;
   language: Language;
   busy: boolean;
   onControl: (action: 'pause' | 'resume' | 'cancel' | 'retry' | 'archive') => Promise<void>;
+  workflow: WorkflowDetail | null;
+  onWorkflowControl: (action: 'start' | 'resume' | 'cancel') => Promise<void>;
 }): React.JSX.Element {
   const { mission } = detail;
   const latestExecution = detail.executions.at(-1);
@@ -484,6 +539,12 @@ function MissionDetailPanel({
           )}
         </div>
       </Surface>
+      <WorkflowVisualizer
+        language={language}
+        workflow={workflow}
+        busy={busy}
+        onControl={onWorkflowControl}
+      />
       <Surface>
         <h2>{copy.plan}</h2>
         {mission.plan ? (

@@ -325,6 +325,35 @@ async function writeSmokeEvidence(window: BrowserWindow): Promise<void> {
               : 0,
             detailVisible: false
           };
+          const workflowLookup = missionId
+            ? await window.jupiter.request({
+                schemaVersion: 1,
+                kind: 'query',
+                name: 'workflows.get',
+                context: { ...makeContext(), missionId },
+                payload: { missionId }
+              })
+            : { status: 'skipped' };
+          const workflowPlanDenied = missionId
+            ? await window.jupiter.request({
+                schemaVersion: 1,
+                kind: 'command',
+                name: 'workflows.plan.create',
+                context: { ...makeContext(), missionId },
+                payload: { missionId, modelOutput: {} }
+              })
+            : { status: 'skipped' };
+          const workflow = {
+            lookupStatus: workflowLookup.status,
+            configured: workflowLookup.status === 'success'
+              ? workflowLookup.data.workflow !== null
+              : null,
+            planCreateStatus: workflowPlanDenied.status,
+            planCreateCategory: workflowPlanDenied.status === 'error'
+              ? workflowPlanDenied.error.category
+              : null,
+            unavailableVisible: false
+          };
           let invalidRejected = false;
           try {
             await window.jupiter.request({ name: 'unsafe.execute', payload: {} });
@@ -350,6 +379,8 @@ async function writeSmokeEvidence(window: BrowserWindow): Promise<void> {
               }
               mission.detailVisible =
                 document.querySelector('[data-testid="mission-detail"]') !== null;
+              workflow.unavailableVisible =
+                document.querySelector('[data-testid="workflow-unavailable"]') !== null;
             }
             screens.push({
               id: screenId,
@@ -466,6 +497,7 @@ async function writeSmokeEvidence(window: BrowserWindow): Promise<void> {
             diagnostics,
             denied,
             mission,
+            workflow,
             invalidRejected,
             eventCursor,
             screens,

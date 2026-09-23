@@ -33,6 +33,14 @@ import {
   MissionListResultSchema,
   MissionTransitionInputSchema,
 } from './mission.js';
+import {
+  WorkflowCheckpointResolveInputSchema,
+  WorkflowControlInputSchema,
+  WorkflowDetailSchema,
+  WorkflowLookupResultSchema,
+  WorkflowPlanCreateInputSchema,
+  WorkflowReplanInputSchema,
+} from './workflow.js';
 
 const EmptyPayloadSchema = z.object({}).strict();
 
@@ -205,6 +213,41 @@ const MissionTransitionRequestSchema = rpcRequest(
   'missions.transition',
   MissionTransitionInputSchema,
 );
+const WorkflowGetRequestSchema = rpcRequest(
+  'query',
+  'workflows.get',
+  z.object({ missionId: MissionIdSchema }).strict(),
+);
+const WorkflowPlanCreateRequestSchema = rpcRequest(
+  'command',
+  'workflows.plan.create',
+  WorkflowPlanCreateInputSchema,
+);
+const WorkflowStartRequestSchema = rpcRequest(
+  'command',
+  'workflows.start',
+  WorkflowControlInputSchema,
+);
+const WorkflowResumeRequestSchema = rpcRequest(
+  'command',
+  'workflows.resume',
+  WorkflowControlInputSchema,
+);
+const WorkflowCancelRequestSchema = rpcRequest(
+  'command',
+  'workflows.cancel',
+  WorkflowControlInputSchema,
+);
+const WorkflowReplanRequestSchema = rpcRequest(
+  'command',
+  'workflows.replan',
+  WorkflowReplanInputSchema,
+);
+const WorkflowCheckpointResolveRequestSchema = rpcRequest(
+  'command',
+  'workflows.checkpoint.resolve',
+  WorkflowCheckpointResolveInputSchema,
+);
 
 export const RpcRequestEnvelopeSchema = z.discriminatedUnion('name', [
   CorePingRequestSchema,
@@ -237,6 +280,13 @@ export const RpcRequestEnvelopeSchema = z.discriminatedUnion('name', [
   MissionRetryRequestSchema,
   MissionArchiveRequestSchema,
   MissionTransitionRequestSchema,
+  WorkflowGetRequestSchema,
+  WorkflowPlanCreateRequestSchema,
+  WorkflowStartRequestSchema,
+  WorkflowResumeRequestSchema,
+  WorkflowCancelRequestSchema,
+  WorkflowReplanRequestSchema,
+  WorkflowCheckpointResolveRequestSchema,
 ]);
 
 export const RpcRequestNameSchema = z.enum([
@@ -270,6 +320,13 @@ export const RpcRequestNameSchema = z.enum([
   'missions.retry',
   'missions.archive',
   'missions.transition',
+  'workflows.get',
+  'workflows.plan.create',
+  'workflows.start',
+  'workflows.resume',
+  'workflows.cancel',
+  'workflows.replan',
+  'workflows.checkpoint.resolve',
 ]);
 
 export const RpcSuccessEnvelopeSchema = z
@@ -372,6 +429,15 @@ export function parseRpcSuccessData(
     case 'missions.archive':
     case 'missions.transition':
       return MissionDetailSchema.parse(data);
+    case 'workflows.get':
+      return WorkflowLookupResultSchema.parse(data);
+    case 'workflows.plan.create':
+    case 'workflows.start':
+    case 'workflows.resume':
+    case 'workflows.cancel':
+    case 'workflows.replan':
+    case 'workflows.checkpoint.resolve':
+      return WorkflowDetailSchema.parse(data);
   }
 }
 

@@ -1029,6 +1029,116 @@ select {
   margin: 0;
 }
 
+.workflow-visualizer {
+  display: grid;
+  gap: var(--j-space-5);
+}
+
+.workflow-revision,
+.workflow-revision code {
+  color: var(--j-color-text-muted);
+  font-size: var(--j-font-size-sm);
+  overflow-wrap: anywhere;
+}
+
+.workflow-checkpoint {
+  display: grid;
+  gap: var(--j-space-2);
+  padding: var(--j-space-4);
+  border: 1px solid var(--j-color-warning);
+  border-radius: var(--j-radius-md);
+  background: color-mix(in srgb, var(--j-color-warning) 8%, transparent);
+}
+
+.workflow-checkpoint span,
+.workflow-checkpoint small {
+  color: var(--j-color-text-muted);
+}
+
+.workflow-graph {
+  display: grid;
+  gap: var(--j-space-3);
+  padding: 0;
+  margin: 0;
+  list-style: none;
+}
+
+.workflow-graph > li {
+  position: relative;
+  display: grid;
+  gap: var(--j-space-3);
+  padding: var(--j-space-4);
+  border: 1px solid var(--j-color-border);
+  border-radius: var(--j-radius-md);
+  background: var(--j-color-surface-raised);
+}
+
+.workflow-graph > li[data-status='RUNNING'],
+.workflow-graph > li[data-status='WAITING'] {
+  border-color: var(--j-color-warning);
+}
+
+.workflow-graph > li[data-status='COMPLETED'] {
+  border-color: var(--j-color-success);
+}
+
+.workflow-graph > li[data-status='FAILED'],
+.workflow-graph > li[data-status='CANCELLED'] {
+  border-color: var(--j-color-danger);
+}
+
+.workflow-node-heading {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: var(--j-space-3);
+  align-items: center;
+}
+
+.workflow-node-heading > div {
+  display: grid;
+  gap: var(--j-space-1);
+}
+
+.workflow-node-heading span:not(.j-status),
+.workflow-graph p,
+.workflow-graph dt {
+  color: var(--j-color-text-muted);
+}
+
+.workflow-node-index {
+  display: grid;
+  width: 2rem;
+  height: 2rem;
+  place-items: center;
+  border-radius: 999px;
+  background: var(--j-color-accent-soft);
+  color: var(--j-color-accent) !important;
+  font-weight: 700;
+}
+
+.workflow-graph dl {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--j-space-3);
+  margin: 0;
+}
+
+.workflow-graph dl div {
+  min-width: 0;
+}
+
+.workflow-graph dt,
+.workflow-graph dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.workflow-plan-meta {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--j-space-5);
+}
+
 .mission-timeline {
   margin: var(--j-space-4) 0 0;
   padding: 0;

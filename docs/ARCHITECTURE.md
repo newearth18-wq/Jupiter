@@ -1,4 +1,4 @@
-# SET 0–4 architecture
+# SET 0–5 architecture
 
 ## Trust boundaries
 
@@ -8,7 +8,7 @@ React product shell (sandboxed, no Node)
   -> Electron Main verifies exact webContents and origin
   -> strict versioned schema validation
   -> Jupiter Core capability dispatcher
-  -> provider-agnostic chat and durable Mission runtime ports
+  -> provider-agnostic chat, durable Mission, and durable Workflow runtime ports
   -> SQLite (WAL, foreign keys, migrations, transactions) + Windows DPAPI credential vault
 ```
 
@@ -17,12 +17,13 @@ The renderer cannot import Node.js, Electron, filesystem, shell, or credential A
 ## Repository boundaries
 
 - `apps/desktop`: Electron Main host gateway, DPAPI vault, narrow preload, localized React shell, service-backed screens, and Electron acceptance tests.
-- `packages/contracts`: strict schemas for bootstrap, Core RPC/events, diagnostics, UI preferences, routes, AI providers/models/settings, conversations, messages, Mission state and records, and transient stream events.
+- `packages/contracts`: strict schemas for bootstrap, Core RPC/events, diagnostics, UI preferences, routes, AI providers/models/settings, conversations, messages, Mission records, workflow plans/executions/checkpoints/artifacts, and transient stream events.
 - `packages/core`: provider-neutral capability dispatcher, RPC gateway, persistent event bus, service lifecycle isolation, typed errors, structured logging, and runtime ports. Core contains no provider-specific code.
-- `packages/database`: SQLite migrations and repositories for settings, ordered events, audit records, service health, non-secret provider/model metadata, routing settings, conversations/messages, and normalized Mission records.
+- `packages/database`: SQLite migrations and repositories for settings, ordered events, audit records, service health, non-secret provider/model metadata, routing settings, conversations/messages, normalized Mission records, and versioned workflow state.
 - `packages/ui`: reusable Visual Design Lock tokens and accessible primitives for buttons, surfaces, status, empty states, tabs, dialogs, and toasts.
 - `services/ai-runtime`: dynamic provider registry, OpenAI-compatible adapter, capability/privacy model router, explicit fallback policy, and cancelable streaming chat orchestration.
 - `services/mission-runtime`: explicit finite-state machine, durable attempts, transition audit, safe-boundary pause, cancellation propagation, retry linkage, and completion/partial-success guards.
+- `services/workflow-runtime`: strict Planner validation, dependency scheduling, safe parallel batches, conditions, bounded retry/backoff, timeouts, checkpoints, idempotent attempt recovery, artifact passing, compensation, and versioned re-planning.
 - Other `services/*`, `packages/security`, and `plugins`: reserved and unavailable until their owning SETs.
 
 ## Product shell
@@ -61,6 +62,14 @@ Mission creation persists the actionable request immediately in `CREATED`. The f
 
 Schema migration 4 adds Missions, executions, transitions, steps, permissions, artifacts, errors, and verification results with foreign keys and deterministic ordering. Migration 3 provider/chat tables store no credential material. `ui.preferences` continues to store language, dark-theme variant, motion, avatar, density, text scale, and last view. Electron Main stores sanitized window bounds and maximized state under `ui.window-state`, validates them, and rejects off-screen restoration. Event cursors remain non-secret session state and prevent duplicate replay after renderer refresh.
 
+## Workflow boundary
+
+Planner model output is treated as untrusted data. It must satisfy the strict plan schema and semantic validation before persistence: dependency references must exist and be acyclic; skills and permissions must be declared and available or approved; artifacts must have a single producer and be consumed only through dependency ancestry. Invalid plans never enter the scheduler.
+
+The engine persists plans, revisions, executions, step attempts, checkpoints, and artifact bindings before exposing state. Ready dependency nodes run concurrently; retries retain one idempotency key, timeouts abort the executor, pause waits for a safe batch boundary, and cancellation propagates to all active children. Restart recovery resumes durable `RUNNING` attempts using the same idempotency key. Approval and identity checkpoints enter `WAITING` and can only be resolved through Core-authorized RPC.
+
+The Mission screen renders a data-backed workflow graph, revision, current statuses, attempts, dependencies, checkpoint state, assumptions, and verification plan. If no validated plan exists it shows `Not configured`. Production SET 5 deliberately registers no fake executors and does not expose Planner submission to the renderer.
+
 ## Deferred architecture
 
-Mission planning/execution, Skills, Memory, Files/Artifact Manager, Automations, devices, plugins, Permission Engine, Identity Engine, and native Windows notifications remain unavailable. SET 4 does not execute tool calls or begin SET 5 planning behavior.
+The Skills registry, real Agent/skill implementations, Memory, Files/Artifact Manager, Automations, devices, plugins, Permission Engine UI, Identity Engine UI, and native Windows notifications remain unavailable. SET 5 provides their validated workflow boundary but does not implement or simulate later-SET capabilities.

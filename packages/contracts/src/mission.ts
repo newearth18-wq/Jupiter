@@ -203,6 +203,7 @@ export const MissionListResultSchema = z.object({ missions: z.array(MissionSchem
 
 export type MissionStatus = z.infer<typeof MissionStatusSchema>;
 export type MissionPriority = z.infer<typeof MissionPrioritySchema>;
+export type MissionPlanSnapshot = z.infer<typeof MissionPlanSnapshotSchema>;
 export type Mission = z.infer<typeof MissionSchema>;
 export type MissionExecution = z.infer<typeof MissionExecutionSchema>;
 export type MissionTransition = z.infer<typeof MissionTransitionSchema>;

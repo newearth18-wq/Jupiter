@@ -12,6 +12,10 @@ import { JupiterCore, type DomainEventListener } from '@jupiter/core';
 import { JupiterDatabase } from '@jupiter/database';
 import { ProviderAgnosticChatRuntime } from '@jupiter/ai-runtime';
 import { DurableMissionRuntime, type MissionRuntimeDependencies } from '@jupiter/mission-runtime';
+import {
+  DurableWorkflowRuntime,
+  type DurableWorkflowRuntimeDependencies,
+} from '@jupiter/workflow-runtime';
 import { DpapiCredentialVault } from './dpapi-credential-vault.js';
 
 export type DesktopCoreRuntimeOptions = {
@@ -23,6 +27,7 @@ export type DesktopCoreRuntimeOptions = {
 export class DesktopCoreRuntime {
   readonly #database: JupiterDatabase;
   readonly #core: JupiterCore;
+  readonly #workflowRuntime: DurableWorkflowRuntime;
   #closed = false;
 
   constructor(options: DesktopCoreRuntimeOptions) {
@@ -47,6 +52,16 @@ export class DesktopCoreRuntime {
         missionEventBridge.publish?.(event);
       },
     });
+    const workflowEventBridge: {
+      publish?: NonNullable<DurableWorkflowRuntimeDependencies['recordEvent']>;
+    } = {};
+    this.#workflowRuntime = new DurableWorkflowRuntime({
+      repository: this.#database,
+      missionRuntime,
+      recordEvent: (event) => {
+        workflowEventBridge.publish?.(event);
+      },
+    });
     this.#core = new JupiterCore({
       version: options.version,
       eventStore: this.#database,
@@ -56,9 +71,12 @@ export class DesktopCoreRuntime {
       settingsRepository: this.#database,
       chatRuntime,
       missionRuntime,
+      workflowRuntime: this.#workflowRuntime,
     });
     missionEventBridge.publish = (event) =>
       this.#core.publishRuntimeEvent(event, 'mission-runtime');
+    workflowEventBridge.publish = (event) =>
+      this.#core.publishRuntimeEvent(event, 'workflow-runtime');
     this.#core.registerService({
       serviceId: 'local-coordinator',
       version: options.version,
@@ -70,6 +88,7 @@ export class DesktopCoreRuntime {
         'models.route',
         'chat.stream',
         'missions.manage',
+        'workflows.manage',
       ],
       start: () => {
         if (options.forceServiceFailure === true) {
@@ -85,8 +104,10 @@ export class DesktopCoreRuntime {
     });
   }
 
-  start(signal: AbortSignal): Promise<DiagnosticsSnapshot> {
-    return this.#core.start(signal);
+  async start(signal: AbortSignal): Promise<DiagnosticsSnapshot> {
+    const diagnostics = await this.#core.start(signal);
+    await this.#workflowRuntime.recover();
+    return diagnostics;
   }
 
   request(

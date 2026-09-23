@@ -47,6 +47,13 @@ const CAPABILITIES: Readonly<Record<RpcRequestName, string>> = {
   'missions.retry': 'missions.retry',
   'missions.archive': 'missions.archive',
   'missions.transition': 'missions.transition',
+  'workflows.get': 'workflows.read',
+  'workflows.plan.create': 'workflows.plan.create',
+  'workflows.start': 'workflows.start',
+  'workflows.resume': 'workflows.resume',
+  'workflows.cancel': 'workflows.cancel',
+  'workflows.replan': 'workflows.replan',
+  'workflows.checkpoint.resolve': 'workflows.checkpoint.resolve',
 };
 
 export class RpcGateway {

@@ -1,16 +1,15 @@
-# Definition of done — SET 4
+# Definition of done — SET 5
 
-SET 4 is done only when:
+SET 5 is done only when:
 
-- the full SET 0–3 verification remains green;
-- an actionable request creates a normalized durable Mission and first execution attempt;
-- only declared state transitions succeed, while invalid transitions preserve state and record their rejection reason;
-- Mission detail, status, attempts, transitions, steps, permissions, artifacts, errors, verification, and timeline survive database close/reopen and renderer refresh;
-- pause requests reach attached work at a safe boundary, cancellation propagates, and retry creates a linked attempt without erasing history;
-- `COMPLETED` is blocked without successful verification or with unresolved required steps;
-- `PARTIAL_SUCCESS` exposes both completed and incomplete outcomes;
-- create, pause, resume, cancel, retry, archive, list, and detail actions are typed, validated, audited, and only enabled when real state permits;
-- absent planning and execution data is shown as unavailable or not configured, never simulated;
+- the full SET 0–4 verification remains green;
+- strict plan contracts include goal, assumptions, typed steps, skills, permissions, artifacts, verification, rationale, revision, and prior-plan linkage;
+- malformed plans, missing dependencies, cycles, unavailable skills, unapproved permissions, and ambiguous artifact flow are rejected before execution;
+- dependency order, safe parallel execution, conditions, bounded retry/backoff, timeout, pause/resume, cancellation propagation, checkpoints, artifact passing, idempotency, compensation, and verification use durable state;
+- restart recovery preserves the execution and idempotency key instead of creating duplicate logical work;
+- re-planning creates a linked immutable revision and retains failed history;
+- the Mission UI shows the real workflow graph, attempts, status, checkpoints, revision, assumptions, and verification plan, or a truthful `Not configured` state;
+- renderer actors can read and control existing workflows but cannot inject Planner output or resolve protected checkpoints;
 - secret scan, format, lint, strict typecheck, unit tests, integration tests, production build, packaged smoke, and package validation pass;
-- no SET 5 Planner or Agent execution has been started;
+- no fake executor or SET 6 Skill Registry/Agent implementation has been started;
 - evidence and limitations are reported from actual command output.

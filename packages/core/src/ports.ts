@@ -28,6 +28,17 @@ import type {
   MissionTransitionInput,
   MissionVerification,
   MissionVerificationInput,
+  MissionPlanSnapshot,
+  WorkflowArtifactBinding,
+  WorkflowCheckpoint,
+  WorkflowCheckpointResolveInput,
+  WorkflowControlInput,
+  WorkflowDetail,
+  WorkflowExecution,
+  WorkflowPlan,
+  WorkflowReplanInput,
+  WorkflowStep,
+  WorkflowStepAttempt,
   ProviderSummary,
   ProviderConfigureInput,
   CoreServiceHealth,
@@ -160,10 +171,71 @@ export type MissionRuntime = {
   upsertStep: (missionId: string, input: MissionStepUpsertInput) => MissionDetail;
   recordVerification: (missionId: string, input: MissionVerificationInput) => MissionDetail;
   recordError: (missionId: string, input: MissionErrorInput) => MissionDetail;
+  setPlanSnapshot: (missionId: string, plan: MissionPlanSnapshot) => MissionDetail;
   attachChildRuntime: (
     missionId: string,
     controller: AbortController,
     child: MissionChildRuntime,
   ) => () => void;
+  shutdown: () => Promise<void>;
+};
+
+export type WorkflowRepository = {
+  transaction: <T>(work: () => T) => T;
+  createWorkflowPlan: (plan: WorkflowPlan) => void;
+  setWorkflowPlanActive: (planId: string, active: boolean) => void;
+  getWorkflowPlan: (planId: string) => WorkflowPlan | undefined;
+  getActiveWorkflowPlan: (missionId: string) => WorkflowPlan | undefined;
+  listWorkflowPlans: (missionId: string) => WorkflowPlan[];
+  createWorkflowExecution: (execution: WorkflowExecution) => void;
+  updateWorkflowExecution: (execution: WorkflowExecution) => void;
+  getWorkflowExecution: (workflowExecutionId: string) => WorkflowExecution | undefined;
+  getLatestWorkflowExecution: (missionId: string) => WorkflowExecution | undefined;
+  listRecoverableWorkflowExecutions: () => WorkflowExecution[];
+  upsertWorkflowStepAttempt: (attempt: WorkflowStepAttempt) => void;
+  listWorkflowStepAttempts: (workflowExecutionId: string) => WorkflowStepAttempt[];
+  createWorkflowCheckpoint: (checkpoint: WorkflowCheckpoint) => void;
+  updateWorkflowCheckpoint: (checkpoint: WorkflowCheckpoint) => void;
+  getWorkflowCheckpoint: (checkpointId: string) => WorkflowCheckpoint | undefined;
+  listWorkflowCheckpoints: (workflowExecutionId: string) => WorkflowCheckpoint[];
+  addWorkflowArtifactBinding: (binding: WorkflowArtifactBinding) => void;
+  listWorkflowArtifactBindings: (workflowExecutionId: string) => WorkflowArtifactBinding[];
+};
+
+export type WorkflowStepResult = {
+  output?: unknown;
+  artifacts?: Readonly<Record<string, unknown>>;
+  verificationPassed: boolean;
+  verificationSummary: string;
+};
+
+export type WorkflowStepExecutor = {
+  skillId: string;
+  execute: (input: {
+    missionId: string;
+    workflowExecutionId: string;
+    step: WorkflowStep;
+    resolvedInput: Readonly<Record<string, unknown>>;
+    idempotencyKey: string;
+    signal: AbortSignal;
+  }) => Promise<WorkflowStepResult>;
+  compensate?: (input: {
+    missionId: string;
+    workflowExecutionId: string;
+    step: WorkflowStep;
+    output: unknown;
+    signal: AbortSignal;
+  }) => Promise<void>;
+};
+
+export type WorkflowRuntime = {
+  getWorkflow: (missionId: string) => WorkflowDetail | undefined;
+  createPlan: (missionId: string, modelOutput: unknown) => WorkflowDetail;
+  startWorkflow: (input: WorkflowControlInput) => Promise<WorkflowDetail>;
+  resumeWorkflow: (input: WorkflowControlInput) => Promise<WorkflowDetail>;
+  cancelWorkflow: (input: WorkflowControlInput) => Promise<WorkflowDetail>;
+  replanWorkflow: (input: WorkflowReplanInput) => WorkflowDetail;
+  resolveCheckpoint: (input: WorkflowCheckpointResolveInput) => Promise<WorkflowDetail>;
+  recover: () => Promise<void>;
   shutdown: () => Promise<void>;
 };
