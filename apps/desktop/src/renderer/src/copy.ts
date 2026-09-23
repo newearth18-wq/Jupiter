@@ -259,7 +259,7 @@ const th: Record<CopyKey, string> = {
   homeEyebrow: 'ศูนย์ควบคุม',
   homeTitle: 'พร้อมเมื่อกำหนดค่าความสามารถจริงแล้ว',
   homeDescription:
-    'Jupiter Core เชื่อมต่อแล้ว แต่ Agent โมเดล และระบบภารกิจยังไม่พร้อมจนกว่าจะพัฒนาถึง SET ที่เกี่ยวข้อง',
+    'Jupiter Core เชื่อมต่อแล้ว แชตจะพร้อมหลังจากกำหนดค่าผู้ให้บริการที่รองรับ ส่วนระบบภารกิจยังไม่พร้อมใช้งาน',
   currentMission: 'ภารกิจปัจจุบัน',
   noActiveMission: 'ไม่มีภารกิจที่กำลังทำงาน',
   noActiveMissionDescription: 'ระบบภารกิจจะพร้อมใน SET ถัดไป ขณะนี้ Jupiter ไม่ได้ทำงานเบื้องหลัง',
