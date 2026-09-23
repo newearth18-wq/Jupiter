@@ -135,6 +135,120 @@ export const MIGRATIONS: readonly Migration[] = [
       CREATE INDEX chat_messages_conversation_idx ON chat_messages (conversation_id, created_at, message_id);
     `,
   },
+  {
+    version: 4,
+    name: 'normalized_mission_system',
+    sql: `
+      CREATE TABLE missions (
+        mission_id TEXT PRIMARY KEY,
+        title TEXT NOT NULL,
+        user_request TEXT NOT NULL,
+        status TEXT NOT NULL,
+        priority TEXT NOT NULL,
+        plan_json TEXT,
+        current_step_id TEXT,
+        archived_at TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      ) STRICT;
+
+      CREATE TABLE mission_executions (
+        execution_id TEXT PRIMARY KEY,
+        mission_id TEXT NOT NULL,
+        attempt INTEGER NOT NULL CHECK (attempt > 0),
+        prior_execution_id TEXT,
+        status TEXT NOT NULL,
+        started_at TEXT NOT NULL,
+        ended_at TEXT,
+        UNIQUE (mission_id, attempt),
+        FOREIGN KEY (mission_id) REFERENCES missions(mission_id) ON DELETE CASCADE,
+        FOREIGN KEY (prior_execution_id) REFERENCES mission_executions(execution_id)
+      ) STRICT;
+
+      CREATE TABLE mission_transitions (
+        transition_id TEXT PRIMARY KEY,
+        mission_id TEXT NOT NULL,
+        execution_id TEXT NOT NULL,
+        from_status TEXT,
+        to_status TEXT NOT NULL,
+        accepted INTEGER NOT NULL CHECK (accepted IN (0, 1)),
+        reason TEXT NOT NULL,
+        occurred_at TEXT NOT NULL,
+        FOREIGN KEY (mission_id) REFERENCES missions(mission_id) ON DELETE CASCADE,
+        FOREIGN KEY (execution_id) REFERENCES mission_executions(execution_id) ON DELETE CASCADE
+      ) STRICT;
+
+      CREATE TABLE mission_steps (
+        step_id TEXT PRIMARY KEY,
+        mission_id TEXT NOT NULL,
+        execution_id TEXT NOT NULL,
+        position INTEGER NOT NULL CHECK (position >= 0),
+        title TEXT NOT NULL,
+        required INTEGER NOT NULL CHECK (required IN (0, 1)),
+        status TEXT NOT NULL,
+        agent TEXT,
+        model TEXT,
+        skills_json TEXT NOT NULL,
+        started_at TEXT,
+        completed_at TEXT,
+        sanitized_error TEXT,
+        FOREIGN KEY (mission_id) REFERENCES missions(mission_id) ON DELETE CASCADE,
+        FOREIGN KEY (execution_id) REFERENCES mission_executions(execution_id) ON DELETE CASCADE
+      ) STRICT;
+
+      CREATE TABLE mission_permissions (
+        permission_id TEXT PRIMARY KEY,
+        mission_id TEXT NOT NULL,
+        name TEXT NOT NULL,
+        status TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        FOREIGN KEY (mission_id) REFERENCES missions(mission_id) ON DELETE CASCADE
+      ) STRICT;
+
+      CREATE TABLE mission_artifacts (
+        mission_artifact_id TEXT PRIMARY KEY,
+        mission_id TEXT NOT NULL,
+        artifact_id TEXT NOT NULL,
+        name TEXT NOT NULL,
+        kind TEXT NOT NULL,
+        status TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        FOREIGN KEY (mission_id) REFERENCES missions(mission_id) ON DELETE CASCADE
+      ) STRICT;
+
+      CREATE TABLE mission_errors (
+        mission_error_id TEXT PRIMARY KEY,
+        mission_id TEXT NOT NULL,
+        execution_id TEXT NOT NULL,
+        step_id TEXT,
+        code TEXT NOT NULL,
+        message TEXT NOT NULL,
+        recoverable INTEGER NOT NULL CHECK (recoverable IN (0, 1)),
+        occurred_at TEXT NOT NULL,
+        FOREIGN KEY (mission_id) REFERENCES missions(mission_id) ON DELETE CASCADE,
+        FOREIGN KEY (execution_id) REFERENCES mission_executions(execution_id) ON DELETE CASCADE,
+        FOREIGN KEY (step_id) REFERENCES mission_steps(step_id)
+      ) STRICT;
+
+      CREATE TABLE mission_verifications (
+        verification_id TEXT PRIMARY KEY,
+        mission_id TEXT NOT NULL,
+        execution_id TEXT NOT NULL,
+        name TEXT NOT NULL,
+        passed INTEGER NOT NULL CHECK (passed IN (0, 1)),
+        summary TEXT NOT NULL,
+        verified_at TEXT NOT NULL,
+        FOREIGN KEY (mission_id) REFERENCES missions(mission_id) ON DELETE CASCADE,
+        FOREIGN KEY (execution_id) REFERENCES mission_executions(execution_id) ON DELETE CASCADE
+      ) STRICT;
+
+      CREATE INDEX missions_updated_idx ON missions (archived_at, updated_at DESC);
+      CREATE INDEX mission_executions_order_idx ON mission_executions (mission_id, attempt);
+      CREATE INDEX mission_transitions_order_idx ON mission_transitions (mission_id, occurred_at, transition_id);
+      CREATE INDEX mission_steps_order_idx ON mission_steps (mission_id, position, step_id);
+      CREATE INDEX mission_verifications_order_idx ON mission_verifications (mission_id, verified_at, verification_id);
+    `,
+  },
 ] as const;
 
 export const CURRENT_SCHEMA_VERSION = MIGRATIONS.at(-1)?.version ?? 0;

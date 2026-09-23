@@ -6,4 +6,5 @@ export * from './diagnostics.js';
 export * from './errors.js';
 export * from './events.js';
 export * from './ipc.js';
+export * from './mission.js';
 export * from './ui.js';

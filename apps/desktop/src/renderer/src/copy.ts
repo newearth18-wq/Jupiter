@@ -39,11 +39,11 @@ const en = {
   homeEyebrow: 'Command Center',
   homeTitle: 'Ready when real capabilities are configured.',
   homeDescription:
-    'Jupiter Core is connected. Chat is available after a compatible provider is configured; Mission execution remains unavailable.',
+    'Jupiter Core is connected. Chat and durable Mission records are available; planning and execution remain explicitly unavailable.',
   currentMission: 'Current Mission',
   noActiveMission: 'No active Mission',
   noActiveMissionDescription:
-    'Mission execution begins in a later SET. Jupiter is not running background work.',
+    'Create a durable request in Missions. Jupiter is not running background work without a real execution plan.',
   progressUnavailable: 'Progress unavailable',
   elapsedTime: 'Elapsed time',
   agent: 'Agent',
@@ -259,10 +259,11 @@ const th: Record<CopyKey, string> = {
   homeEyebrow: 'ศูนย์ควบคุม',
   homeTitle: 'พร้อมเมื่อกำหนดค่าความสามารถจริงแล้ว',
   homeDescription:
-    'Jupiter Core เชื่อมต่อแล้ว แชตจะพร้อมหลังจากกำหนดค่าผู้ให้บริการที่รองรับ ส่วนระบบภารกิจยังไม่พร้อมใช้งาน',
+    'Jupiter Core เชื่อมต่อแล้ว แชตและข้อมูลภารกิจแบบถาวรพร้อมใช้งาน ส่วนการวางแผนและดำเนินงานยังไม่พร้อม',
   currentMission: 'ภารกิจปัจจุบัน',
   noActiveMission: 'ไม่มีภารกิจที่กำลังทำงาน',
-  noActiveMissionDescription: 'ระบบภารกิจจะพร้อมใน SET ถัดไป ขณะนี้ Jupiter ไม่ได้ทำงานเบื้องหลัง',
+  noActiveMissionDescription:
+    'สร้างคำขอแบบถาวรได้ในหน้าภารกิจ Jupiter จะไม่ทำงานเบื้องหลังหากยังไม่มีแผนดำเนินงานจริง',
   progressUnavailable: 'ไม่มีข้อมูลความคืบหน้า',
   elapsedTime: 'เวลาที่ใช้',
   agent: 'Agent',

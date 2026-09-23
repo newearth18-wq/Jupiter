@@ -11,6 +11,7 @@ import {
 import { JupiterCore, type DomainEventListener } from '@jupiter/core';
 import { JupiterDatabase } from '@jupiter/database';
 import { ProviderAgnosticChatRuntime } from '@jupiter/ai-runtime';
+import { DurableMissionRuntime, type MissionRuntimeDependencies } from '@jupiter/mission-runtime';
 import { DpapiCredentialVault } from './dpapi-credential-vault.js';
 
 export type DesktopCoreRuntimeOptions = {
@@ -37,6 +38,15 @@ export class DesktopCoreRuntime {
         });
       },
     });
+    const missionEventBridge: {
+      publish?: NonNullable<MissionRuntimeDependencies['recordEvent']>;
+    } = {};
+    const missionRuntime = new DurableMissionRuntime({
+      repository: this.#database,
+      recordEvent: (event) => {
+        missionEventBridge.publish?.(event);
+      },
+    });
     this.#core = new JupiterCore({
       version: options.version,
       eventStore: this.#database,
@@ -45,7 +55,10 @@ export class DesktopCoreRuntime {
       diagnosticsRepository: this.#database,
       settingsRepository: this.#database,
       chatRuntime,
+      missionRuntime,
     });
+    missionEventBridge.publish = (event) =>
+      this.#core.publishRuntimeEvent(event, 'mission-runtime');
     this.#core.registerService({
       serviceId: 'local-coordinator',
       version: options.version,
@@ -56,6 +69,7 @@ export class DesktopCoreRuntime {
         'providers.configure',
         'models.route',
         'chat.stream',
+        'missions.manage',
       ],
       start: () => {
         if (options.forceServiceFailure === true) {

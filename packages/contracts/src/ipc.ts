@@ -24,6 +24,15 @@ import {
   ProviderValidationResultSchema,
 } from './ai.js';
 import { UiPreferencesSchema, UiPreferencesUpdateSchema } from './ui.js';
+import {
+  MissionArchiveInputSchema,
+  MissionControlInputSchema,
+  MissionCreateInputSchema,
+  MissionDetailSchema,
+  MissionIdSchema,
+  MissionListResultSchema,
+  MissionTransitionInputSchema,
+} from './mission.js';
 
 const EmptyPayloadSchema = z.object({}).strict();
 
@@ -151,6 +160,51 @@ const ChatEditResendRequestSchema = rpcRequest(
   'chat.edit_resend',
   ChatEditResendInputSchema,
 );
+const MissionsListRequestSchema = rpcRequest(
+  'query',
+  'missions.list',
+  z.object({ includeArchived: z.boolean().default(false) }).strict(),
+);
+const MissionGetRequestSchema = rpcRequest(
+  'query',
+  'missions.get',
+  z.object({ missionId: MissionIdSchema }).strict(),
+);
+const MissionCreateRequestSchema = rpcRequest(
+  'command',
+  'missions.create',
+  MissionCreateInputSchema,
+);
+const MissionPauseRequestSchema = rpcRequest(
+  'command',
+  'missions.pause',
+  MissionControlInputSchema,
+);
+const MissionResumeRequestSchema = rpcRequest(
+  'command',
+  'missions.resume',
+  MissionControlInputSchema,
+);
+const MissionCancelRequestSchema = rpcRequest(
+  'command',
+  'missions.cancel',
+  MissionControlInputSchema,
+);
+const MissionRetryRequestSchema = rpcRequest(
+  'command',
+  'missions.retry',
+  MissionControlInputSchema,
+);
+const MissionArchiveRequestSchema = rpcRequest(
+  'command',
+  'missions.archive',
+  MissionArchiveInputSchema,
+);
+const MissionTransitionRequestSchema = rpcRequest(
+  'command',
+  'missions.transition',
+  MissionTransitionInputSchema,
+);
 
 export const RpcRequestEnvelopeSchema = z.discriminatedUnion('name', [
   CorePingRequestSchema,
@@ -174,6 +228,15 @@ export const RpcRequestEnvelopeSchema = z.discriminatedUnion('name', [
   ChatSendRequestSchema,
   ChatRetryRequestSchema,
   ChatEditResendRequestSchema,
+  MissionsListRequestSchema,
+  MissionGetRequestSchema,
+  MissionCreateRequestSchema,
+  MissionPauseRequestSchema,
+  MissionResumeRequestSchema,
+  MissionCancelRequestSchema,
+  MissionRetryRequestSchema,
+  MissionArchiveRequestSchema,
+  MissionTransitionRequestSchema,
 ]);
 
 export const RpcRequestNameSchema = z.enum([
@@ -198,6 +261,15 @@ export const RpcRequestNameSchema = z.enum([
   'chat.send',
   'chat.retry',
   'chat.edit_resend',
+  'missions.list',
+  'missions.get',
+  'missions.create',
+  'missions.pause',
+  'missions.resume',
+  'missions.cancel',
+  'missions.retry',
+  'missions.archive',
+  'missions.transition',
 ]);
 
 export const RpcSuccessEnvelopeSchema = z
@@ -289,6 +361,17 @@ export function parseRpcSuccessData(
     case 'chat.retry':
     case 'chat.edit_resend':
       return ChatSendResultSchema.parse(data);
+    case 'missions.list':
+      return MissionListResultSchema.parse(data);
+    case 'missions.get':
+    case 'missions.create':
+    case 'missions.pause':
+    case 'missions.resume':
+    case 'missions.cancel':
+    case 'missions.retry':
+    case 'missions.archive':
+    case 'missions.transition':
+      return MissionDetailSchema.parse(data);
   }
 }
 

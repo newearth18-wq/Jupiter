@@ -45,6 +45,17 @@ type SmokeEvidence = {
       };
     };
     denied: { status: string; error?: { category: string } };
+    mission: {
+      createStatus: string;
+      cancelStatus: string;
+      retryStatus: string;
+      missionId?: string;
+      finalStatus?: string;
+      attempts: number;
+      priorLinked: boolean;
+      timelineCount: number;
+      detailVisible: boolean;
+    };
   };
   ai: {
     status?: string;
@@ -73,6 +84,7 @@ type SmokeEvidence = {
     language: string;
     motion: string | null;
     theme: string | null;
+    missionCount: number;
   };
   responsive: {
     innerWidth: number;
@@ -184,11 +196,21 @@ describe('packaged-shape Electron shell', () => {
     expect(evidence.renderer.diagnostics.status).toBe('success');
     expect(evidence.renderer.diagnostics.data?.database).toMatchObject({
       status: 'operational',
-      schemaVersion: 3,
+      schemaVersion: 4,
       integrity: 'ok',
     });
     expect(evidence.renderer.denied.status).toBe('error');
     expect(evidence.renderer.denied.error?.category).toBe('permission');
+    expect(evidence.renderer.mission).toMatchObject({
+      createStatus: 'success',
+      cancelStatus: 'success',
+      retryStatus: 'success',
+      finalStatus: 'READY',
+      attempts: 2,
+      priorLinked: true,
+      detailVisible: true,
+    });
+    expect(evidence.renderer.mission.timelineCount).toBeGreaterThanOrEqual(5);
     expect(evidence.renderer.eventCursor).toBeGreaterThan(0);
     expect(evidence.reconnection.cursor).toBeGreaterThanOrEqual(evidence.renderer.eventCursor);
     expect(evidence.reconnection.replayedEventCount).toBe(0);
@@ -212,9 +234,7 @@ describe('packaged-shape Electron shell', () => {
     expect(evidence.renderer.screens).toHaveLength(12);
     expect(evidence.renderer.screens.every((screen) => screen.rendered && screen.title)).toBe(true);
     const deferred = evidence.renderer.screens.filter((screen) =>
-      ['missions', 'skills', 'memory', 'files', 'automations', 'devices', 'plugins'].includes(
-        screen.id,
-      ),
+      ['skills', 'memory', 'files', 'automations', 'devices', 'plugins'].includes(screen.id),
     );
     expect(deferred.every((screen) => screen.availability !== null)).toBe(true);
     expect(evidence.renderer.thaiText).toMatchObject({
@@ -238,6 +258,7 @@ describe('packaged-shape Electron shell', () => {
       language: 'th',
       motion: 'reduced',
       theme: 'midnight',
+      missionCount: 1,
     });
     expect(evidence.responsive.innerWidth).toBeGreaterThanOrEqual(600);
     expect(evidence.responsive.innerHeight).toBeGreaterThanOrEqual(320);
@@ -313,7 +334,10 @@ async function startAiFixture(): Promise<{ server: Server; baseUrl: string }> {
       response.write('data: {"choices":[{"delta":{"content":"Hello "}}]}\n\n');
       setTimeout(() => {
         if (!response.destroyed) {
-          response.end('data: {"choices":[{"delta":{"content":"Jupiter"}}]}\n\ndata: [DONE]\n\n');
+          response.write('data: {"choices":[{"delta":{"content":"Jupiter"}}]}\n\n');
+          setTimeout(() => {
+            if (!response.destroyed) response.end('data: [DONE]\n\n');
+          }, 120);
         }
       }, 120);
     });

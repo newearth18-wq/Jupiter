@@ -1,4 +1,4 @@
-# SET 0–3 architecture
+# SET 0–4 architecture
 
 ## Trust boundaries
 
@@ -8,7 +8,7 @@ React product shell (sandboxed, no Node)
   -> Electron Main verifies exact webContents and origin
   -> strict versioned schema validation
   -> Jupiter Core capability dispatcher
-  -> provider-agnostic chat/runtime port and repository interfaces
+  -> provider-agnostic chat and durable Mission runtime ports
   -> SQLite (WAL, foreign keys, migrations, transactions) + Windows DPAPI credential vault
 ```
 
@@ -17,16 +17,17 @@ The renderer cannot import Node.js, Electron, filesystem, shell, or credential A
 ## Repository boundaries
 
 - `apps/desktop`: Electron Main host gateway, DPAPI vault, narrow preload, localized React shell, service-backed screens, and Electron acceptance tests.
-- `packages/contracts`: strict schemas for bootstrap, Core RPC/events, diagnostics, UI preferences, routes, AI providers/models/settings, conversations, messages, and transient stream events.
+- `packages/contracts`: strict schemas for bootstrap, Core RPC/events, diagnostics, UI preferences, routes, AI providers/models/settings, conversations, messages, Mission state and records, and transient stream events.
 - `packages/core`: provider-neutral capability dispatcher, RPC gateway, persistent event bus, service lifecycle isolation, typed errors, structured logging, and runtime ports. Core contains no provider-specific code.
-- `packages/database`: SQLite migrations and repositories for settings, ordered events, audit records, service health, non-secret provider/model metadata, routing settings, conversations, and messages.
+- `packages/database`: SQLite migrations and repositories for settings, ordered events, audit records, service health, non-secret provider/model metadata, routing settings, conversations/messages, and normalized Mission records.
 - `packages/ui`: reusable Visual Design Lock tokens and accessible primitives for buttons, surfaces, status, empty states, tabs, dialogs, and toasts.
 - `services/ai-runtime`: dynamic provider registry, OpenAI-compatible adapter, capability/privacy model router, explicit fallback policy, and cancelable streaming chat orchestration.
+- `services/mission-runtime`: explicit finite-state machine, durable attempts, transition audit, safe-boundary pause, cancellation propagation, retry linkage, and completion/partial-success guards.
 - Other `services/*`, `packages/security`, and `plugins`: reserved and unavailable until their owning SETs.
 
 ## Product shell
 
-The custom Windows title-bar overlay and compact sidebar expose all twelve required destinations. Home, Chat, AI Models, Settings, and Diagnostics have live behavior. Other screens render localized truthful availability states. The central Jupiter form retains the locked spherical core, orbital rings, restrained particles, and service-derived operational/degraded/offline state. Current Mission remains disabled because its backend belongs to a later SET.
+The custom Windows title-bar overlay and compact sidebar expose all twelve required destinations. Home, Chat, Missions, AI Models, Settings, and Diagnostics have live behavior. Other screens render localized truthful availability states. The central Jupiter form retains the locked spherical core, orbital rings, restrained particles, and service-derived operational/degraded/offline state. Current Mission reads the latest durable Mission; controls are enabled only when the real state permits them.
 
 ## AI provider and chat boundary
 
@@ -50,10 +51,16 @@ Shortcuts:
 
 Reduce Motion disables nonessential avatar animation. Static Avatar, Hide Avatar, compact mode, and 90–125% text scaling are persisted through typed Core capabilities.
 
+## Mission boundary
+
+Mission creation persists the actionable request immediately in `CREATED`. The finite-state machine accepts only declared transitions and stores rejected attempts with their reason. Each retry creates a linked execution attempt without erasing prior steps, errors, verification, or transitions. Pause waits for attached child runtimes to reach a safe boundary, while cancellation aborts and notifies attached work before changing state.
+
+`COMPLETED` requires successful verification and no unresolved required step. `PARTIAL_SUCCESS` requires visible completed and incomplete outcomes. The detail UI reconstructs its human-readable timeline from normalized records and reports absent plan, Agent, Skill, Model, progress, and execution as not configured. SET 4 does not add a planner or agent executor.
+
 ## Persistence
 
-Schema migration 3 adds providers, discovered models, AI settings, conversations, and ordered chat messages. It stores no credential material. `ui.preferences` continues to store language, dark-theme variant, motion, avatar, density, text scale, and last view. Electron Main stores sanitized window bounds and maximized state under `ui.window-state`, validates them, and rejects off-screen restoration. Event cursors remain non-secret session state and prevent duplicate replay after renderer refresh.
+Schema migration 4 adds Missions, executions, transitions, steps, permissions, artifacts, errors, and verification results with foreign keys and deterministic ordering. Migration 3 provider/chat tables store no credential material. `ui.preferences` continues to store language, dark-theme variant, motion, avatar, density, text scale, and last view. Electron Main stores sanitized window bounds and maximized state under `ui.window-state`, validates them, and rejects off-screen restoration. Event cursors remain non-secret session state and prevent duplicate replay after renderer refresh.
 
 ## Deferred architecture
 
-Mission execution, Skills, Memory, Files/Artifacts, Automations, devices, plugins, Permission Engine, Identity Engine, and native Windows notifications remain unavailable. SET 3 does not execute tool calls or begin Mission behavior.
+Mission planning/execution, Skills, Memory, Files/Artifact Manager, Automations, devices, plugins, Permission Engine, Identity Engine, and native Windows notifications remain unavailable. SET 4 does not execute tool calls or begin SET 5 planning behavior.

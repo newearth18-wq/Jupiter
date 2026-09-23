@@ -15,8 +15,10 @@ import { DomainEventBus, type DomainEventListener } from '../events/domain-event
 import type {
   AuditRepository,
   DiagnosticsRepository,
+  DomainEventDraft,
   ChatRuntime,
   EventStore,
+  MissionRuntime,
   SettingsRepository,
   ServiceHealthRepository,
 } from '../ports.js';
@@ -31,6 +33,7 @@ export type JupiterCoreDependencies = {
   diagnosticsRepository: DiagnosticsRepository;
   settingsRepository: SettingsRepository;
   chatRuntime?: ChatRuntime;
+  missionRuntime?: MissionRuntime;
 };
 
 export class JupiterCore {
@@ -42,6 +45,7 @@ export class JupiterCore {
   readonly #gateway: RpcGateway;
   readonly #settingsRepository: SettingsRepository;
   readonly #chatRuntime: ChatRuntime | undefined;
+  readonly #missionRuntime: MissionRuntime | undefined;
   #started = false;
 
   constructor(dependencies: JupiterCoreDependencies) {
@@ -51,6 +55,7 @@ export class JupiterCore {
     this.#diagnosticsRepository = dependencies.diagnosticsRepository;
     this.#settingsRepository = dependencies.settingsRepository;
     this.#chatRuntime = dependencies.chatRuntime;
+    this.#missionRuntime = dependencies.missionRuntime;
     this.#dispatcher = new CapabilityDispatcher();
     this.#gateway = new RpcGateway(this.#dispatcher, dependencies.auditRepository);
     this.#registerCapabilities();
@@ -88,7 +93,7 @@ export class JupiterCore {
       occurredAt: new Date().toISOString(),
     });
     this.#started = false;
-    await this.#chatRuntime?.shutdown();
+    await Promise.all([this.#chatRuntime?.shutdown(), this.#missionRuntime?.shutdown()]);
   }
 
   handleRpc(
@@ -101,6 +106,18 @@ export class JupiterCore {
 
   subscribe(listener: DomainEventListener): () => void {
     return this.#events.subscribe(listener);
+  }
+
+  publishRuntimeEvent(
+    event: Omit<DomainEventDraft, 'correlationId' | 'actor' | 'source'>,
+    source: string,
+  ): void {
+    this.#events.publish({
+      ...event,
+      correlationId: randomUUID(),
+      actor: 'service',
+      source,
+    });
   }
 
   subscribeChat(listener: (event: ChatStreamEvent) => void): () => void {
@@ -196,6 +213,39 @@ export class JupiterCore {
       },
     });
     if (this.#chatRuntime) this.#registerAiCapabilities(this.#chatRuntime);
+    if (this.#missionRuntime) this.#registerMissionCapabilities(this.#missionRuntime);
+  }
+
+  #registerMissionCapabilities(runtime: MissionRuntime): void {
+    const register = (
+      capability: string,
+      handler: Parameters<CapabilityDispatcher['register']>[0]['handler'],
+      allowedActors: Actor[] = ['renderer', 'core', 'test'],
+    ): void => {
+      this.#dispatcher.register({ capability, allowedActors, handler });
+    };
+    register('missions.read', (input) => {
+      if ('missionId' in (input as object)) {
+        return runtime.getMissionDetail((input as { missionId: string }).missionId);
+      }
+      return {
+        missions: runtime.listMissions((input as { includeArchived?: boolean }).includeArchived),
+      };
+    });
+    register('missions.create', (input) => runtime.createMission(input as never));
+    register('missions.pause', (input, context) =>
+      runtime.pauseMission(input as never, context.signal),
+    );
+    register('missions.resume', (input) => runtime.resumeMission(input as never));
+    register('missions.cancel', (input) => runtime.cancelMission(input as never));
+    register('missions.retry', (input) => runtime.retryMission(input as never));
+    register('missions.archive', (input) =>
+      runtime.archiveMission((input as { missionId: string }).missionId),
+    );
+    register('missions.transition', (input) => runtime.transitionMission(input as never), [
+      'core',
+      'test',
+    ]);
   }
 
   #registerAiCapabilities(runtime: ChatRuntime): void {

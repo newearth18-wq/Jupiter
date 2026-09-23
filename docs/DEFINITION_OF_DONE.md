@@ -1,17 +1,16 @@
-# Definition of done — SET 3
+# Definition of done — SET 4
 
-SET 3 is done only when:
+SET 4 is done only when:
 
-- the full SET 0–2 verification remains green;
-- providers can be dynamically added and removed without provider-specific changes to Jupiter Core;
-- credentials are encrypted by OS-backed storage and never appear in renderer storage, SQLite, logs, or errors;
-- invalid authentication and provider outages produce clear sanitized failures;
-- model discovery and capability-aware routing support `AUTO`, `CLOUD`, `HYBRID`, and `LOCAL_ONLY`;
-- `LOCAL_ONLY` dispatches no cloud request, and fallback is policy-controlled, approved, and recorded;
-- Chat streams incrementally, Stop Generation aborts the active provider request, and retry/edit-resend are real;
-- conversations and messages survive a database close/reopen;
-- provider/model indicators, configuration actions, per-conversation routing, and structured tool-call display are available;
-- attachments remain disabled and truthful until Artifact Manager exists;
+- the full SET 0–3 verification remains green;
+- an actionable request creates a normalized durable Mission and first execution attempt;
+- only declared state transitions succeed, while invalid transitions preserve state and record their rejection reason;
+- Mission detail, status, attempts, transitions, steps, permissions, artifacts, errors, verification, and timeline survive database close/reopen and renderer refresh;
+- pause requests reach attached work at a safe boundary, cancellation propagates, and retry creates a linked attempt without erasing history;
+- `COMPLETED` is blocked without successful verification or with unresolved required steps;
+- `PARTIAL_SUCCESS` exposes both completed and incomplete outcomes;
+- create, pause, resume, cancel, retry, archive, list, and detail actions are typed, validated, audited, and only enabled when real state permits;
+- absent planning and execution data is shown as unavailable or not configured, never simulated;
 - secret scan, format, lint, strict typecheck, unit tests, integration tests, production build, packaged smoke, and package validation pass;
-- no SET 4 Mission backend has been started;
+- no SET 5 Planner or Agent execution has been started;
 - evidence and limitations are reported from actual command output.

@@ -38,6 +38,15 @@ const CAPABILITIES: Readonly<Record<RpcRequestName, string>> = {
   'chat.send': 'chat.send',
   'chat.retry': 'chat.send',
   'chat.edit_resend': 'chat.send',
+  'missions.list': 'missions.read',
+  'missions.get': 'missions.read',
+  'missions.create': 'missions.create',
+  'missions.pause': 'missions.pause',
+  'missions.resume': 'missions.resume',
+  'missions.cancel': 'missions.cancel',
+  'missions.retry': 'missions.retry',
+  'missions.archive': 'missions.archive',
+  'missions.transition': 'missions.transition',
 };
 
 export class RpcGateway {

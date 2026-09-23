@@ -13,6 +13,21 @@ import type {
   ConversationCreateInput,
   ConversationRouteInput,
   ModelDescriptor,
+  Mission,
+  MissionArtifact,
+  MissionControlInput,
+  MissionCreateInput,
+  MissionDetail,
+  MissionError,
+  MissionErrorInput,
+  MissionExecution,
+  MissionPermission,
+  MissionStep,
+  MissionStepUpsertInput,
+  MissionTransition,
+  MissionTransitionInput,
+  MissionVerification,
+  MissionVerificationInput,
   ProviderSummary,
   ProviderConfigureInput,
   CoreServiceHealth,
@@ -101,5 +116,54 @@ export type ChatRuntime = {
     signal: AbortSignal,
   ) => Promise<ChatSendResult>;
   subscribe: (listener: (event: ChatStreamEvent) => void) => () => void;
+  shutdown: () => Promise<void>;
+};
+
+export type MissionRepository = {
+  transaction: <T>(work: () => T) => T;
+  createMission: (mission: Mission) => void;
+  updateMission: (mission: Mission) => void;
+  getMission: (missionId: string) => Mission | undefined;
+  listMissions: (includeArchived?: boolean) => Mission[];
+  createMissionExecution: (execution: MissionExecution) => void;
+  updateMissionExecution: (execution: MissionExecution) => void;
+  listMissionExecutions: (missionId: string) => MissionExecution[];
+  appendMissionTransition: (transition: MissionTransition) => void;
+  listMissionTransitions: (missionId: string) => MissionTransition[];
+  upsertMissionStep: (step: MissionStep) => void;
+  listMissionSteps: (missionId: string) => MissionStep[];
+  upsertMissionPermission: (permission: MissionPermission) => void;
+  listMissionPermissions: (missionId: string) => MissionPermission[];
+  addMissionArtifact: (artifact: MissionArtifact) => void;
+  listMissionArtifacts: (missionId: string) => MissionArtifact[];
+  addMissionError: (error: MissionError) => void;
+  listMissionErrors: (missionId: string) => MissionError[];
+  addMissionVerification: (verification: MissionVerification) => void;
+  listMissionVerifications: (missionId: string) => MissionVerification[];
+};
+
+export type MissionChildRuntime = {
+  pauseAtSafeBoundary: (signal: AbortSignal) => Promise<void>;
+  cancel: (reason: string) => Promise<void>;
+};
+
+export type MissionRuntime = {
+  listMissions: (includeArchived?: boolean) => Mission[];
+  getMissionDetail: (missionId: string) => MissionDetail;
+  createMission: (input: MissionCreateInput) => MissionDetail;
+  pauseMission: (input: MissionControlInput, signal: AbortSignal) => Promise<MissionDetail>;
+  resumeMission: (input: MissionControlInput) => MissionDetail;
+  cancelMission: (input: MissionControlInput) => Promise<MissionDetail>;
+  retryMission: (input: MissionControlInput) => MissionDetail;
+  archiveMission: (missionId: string) => MissionDetail;
+  transitionMission: (input: MissionTransitionInput) => MissionDetail;
+  upsertStep: (missionId: string, input: MissionStepUpsertInput) => MissionDetail;
+  recordVerification: (missionId: string, input: MissionVerificationInput) => MissionDetail;
+  recordError: (missionId: string, input: MissionErrorInput) => MissionDetail;
+  attachChildRuntime: (
+    missionId: string,
+    controller: AbortController,
+    child: MissionChildRuntime,
+  ) => () => void;
   shutdown: () => Promise<void>;
 };

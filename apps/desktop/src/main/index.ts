@@ -274,6 +274,57 @@ async function writeSmokeEvidence(window: BrowserWindow): Promise<void> {
             context: makeContext('core'),
             payload: {}
           });
+          const missionCreated = await window.jupiter.request({
+            schemaVersion: 1,
+            kind: 'command',
+            name: 'missions.create',
+            context: makeContext(),
+            payload: {
+              title: 'Electron persistence fixture',
+              userRequest: 'Persist this actionable Mission through renderer reload.',
+              priority: 'HIGH'
+            }
+          });
+          const missionId = missionCreated.status === 'success'
+            ? missionCreated.data.mission.missionId
+            : undefined;
+          const missionCancelled = missionId
+            ? await window.jupiter.request({
+                schemaVersion: 1,
+                kind: 'command',
+                name: 'missions.cancel',
+                context: { ...makeContext(), missionId },
+                payload: { missionId, reason: 'Exercise cancellation persistence.' }
+              })
+            : { status: 'skipped' };
+          const missionRetried = missionId
+            ? await window.jupiter.request({
+                schemaVersion: 1,
+                kind: 'command',
+                name: 'missions.retry',
+                context: { ...makeContext(), missionId },
+                payload: { missionId, reason: 'Exercise linked retry persistence.' }
+              })
+            : { status: 'skipped' };
+          const mission = {
+            createStatus: missionCreated.status,
+            cancelStatus: missionCancelled.status,
+            retryStatus: missionRetried.status,
+            missionId,
+            finalStatus: missionRetried.status === 'success'
+              ? missionRetried.data.mission.status
+              : undefined,
+            attempts: missionRetried.status === 'success'
+              ? missionRetried.data.executions.length
+              : 0,
+            priorLinked: missionRetried.status === 'success'
+              ? Boolean(missionRetried.data.executions.at(-1)?.priorExecutionId)
+              : false,
+            timelineCount: missionRetried.status === 'success'
+              ? missionRetried.data.timeline.length
+              : 0,
+            detailVisible: false
+          };
           let invalidRejected = false;
           try {
             await window.jupiter.request({ name: 'unsafe.execute', payload: {} });
@@ -289,6 +340,17 @@ async function writeSmokeEvidence(window: BrowserWindow): Promise<void> {
           for (const screenId of screenIds) {
             location.hash = '#/' + screenId;
             await wait(80);
+            if (screenId === 'missions') {
+              const missionDetailStarted = Date.now();
+              while (
+                document.querySelector('[data-testid="mission-detail"]') === null &&
+                Date.now() - missionDetailStarted < 2000
+              ) {
+                await wait(25);
+              }
+              mission.detailVisible =
+                document.querySelector('[data-testid="mission-detail"]') !== null;
+            }
             screens.push({
               id: screenId,
               rendered: document.querySelector('[data-screen="' + screenId + '"]') !== null,
@@ -403,6 +465,7 @@ async function writeSmokeEvidence(window: BrowserWindow): Promise<void> {
             ping,
             diagnostics,
             denied,
+            mission,
             invalidRejected,
             eventCursor,
             screens,
@@ -617,13 +680,25 @@ async function writeSmokeEvidence(window: BrowserWindow): Promise<void> {
             },
             payload: { afterSequence: cursor, limit: 500 }
           });
+          const missions = await window.jupiter.request({
+            schemaVersion: 1,
+            kind: 'query',
+            name: 'missions.list',
+            context: {
+              requestId: crypto.randomUUID(),
+              actor: 'renderer',
+              timestamp: new Date().toISOString()
+            },
+            payload: { includeArchived: false }
+          });
           resolve({
             cursor,
             replayedEventCount: response.status === 'success' ? response.data.events.length : -1,
             currentView: document.querySelector('[data-screen]')?.getAttribute('data-screen') ?? null,
             language: document.documentElement.lang,
             motion: document.documentElement.dataset.motion ?? null,
-            theme: document.documentElement.dataset.theme ?? null
+            theme: document.documentElement.dataset.theme ?? null,
+            missionCount: missions.status === 'success' ? missions.data.missions.length : -1
           });
         } else {
           setTimeout(inspect, 50);
@@ -656,19 +731,24 @@ async function writeSmokeEvidence(window: BrowserWindow): Promise<void> {
   })`);
   const screenshotPath = process.env.JUPITER_SMOKE_SCREENSHOT_PATH;
   if (screenshotPath) {
+    const screenshotScreen = process.env.JUPITER_SMOKE_SCREENSHOT_SCREEN ?? 'home';
+    const screenshotScreenLiteral = JSON.stringify(screenshotScreen);
     window.setContentSize(1180, 760);
     await window.webContents.executeJavaScript(`new Promise((resolve) => {
-      location.hash = '#/home';
+      const targetScreen = ${screenshotScreenLiteral};
+      location.hash = '#/' + targetScreen;
       const startedAt = Date.now();
-      const waitForHome = () => {
+      const waitForScreen = () => {
         const activeScreen = document.querySelector('[data-screen]')?.getAttribute('data-screen');
-        if (activeScreen === 'home' || Date.now() - startedAt >= 3000) {
-          setTimeout(resolve, 250);
+        const missionReady = targetScreen !== 'missions' ||
+          document.querySelector('[data-testid="mission-detail"]') !== null;
+        if ((activeScreen === targetScreen && missionReady) || Date.now() - startedAt >= 3000) {
+          setTimeout(resolve, 500);
           return;
         }
-        setTimeout(waitForHome, 50);
+        setTimeout(waitForScreen, 50);
       };
-      waitForHome();
+      waitForScreen();
     })`);
     const screenshot = await window.webContents.capturePage();
     mkdirSync(dirname(screenshotPath), { recursive: true });

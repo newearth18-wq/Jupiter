@@ -9,5 +9,6 @@ coverage/
 .env.*.local
 apps/desktop/src/generated/build-metadata.json
 test-results/
+artifacts/
 Thumbs.db
 .DS_Store

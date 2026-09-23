@@ -2,11 +2,14 @@ import {
   DEFAULT_UI_PREFERENCES,
   DiagnosticsSnapshotSchema,
   EventsReplayResultSchema,
+  MissionDetailSchema,
+  MissionListResultSchema,
   ScreenIdSchema,
   UiPreferencesSchema,
   type BootstrapState,
   type DiagnosticsSnapshot,
   type DomainEvent,
+  type MissionDetail,
   type ScreenId,
   type UiPreferences,
   type UiPreferencesUpdate,
@@ -24,6 +27,7 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createTranslator, preferredLanguage, type CopyKey, type Translator } from './copy.js';
 import { ChatScreen } from './chat-screen.js';
+import { MissionScreen } from './mission-screen.js';
 import { ModelsScreen } from './models-screen.js';
 import { windowsNotificationBridge } from './notification-bridge.js';
 
@@ -47,11 +51,6 @@ const NAVIGATION: readonly { id: ScreenId; label: CopyKey; icon: string }[] = [
 const DEFERRED_SCREENS: Readonly<
   Partial<Record<ScreenId, { title: CopyKey; description: CopyKey; availability: CopyKey }>>
 > = {
-  missions: {
-    title: 'missionsTitle',
-    description: 'missionsDescription',
-    availability: 'unavailable',
-  },
   skills: {
     title: 'skillsTitle',
     description: 'skillsDescription',
@@ -422,6 +421,7 @@ function Screen({
     );
   }
   if (view === 'chat') return <ChatScreen t={t} />;
+  if (view === 'missions') return <MissionScreen language={preferences.language} />;
   if (view === 'models') return <ModelsScreen t={t} />;
   if (view === 'diagnostics') {
     return (
@@ -480,7 +480,13 @@ function CommandCenter({
             {statusLabel(runtimeStatus, t)}
           </StatusBadge>
         </Surface>
-        <MissionCard t={t} />
+        <MissionCard
+          eventVersion={
+            events.filter((event) => event.type.startsWith('mission.')).at(-1)?.sequence
+          }
+          language={preferences.language}
+          t={t}
+        />
       </div>
       <ActivityTimeline events={events} language={preferences.language} t={t} />
       <ChatComposer t={t} />
@@ -676,34 +682,209 @@ function JupiterAvatar({
   );
 }
 
-function MissionCard({ t }: { t: Translator }): React.JSX.Element {
+function MissionCard({
+  eventVersion,
+  language,
+  t,
+}: {
+  eventVersion: number | undefined;
+  language: UiPreferences['language'];
+  t: Translator;
+}): React.JSX.Element {
+  const [detail, setDetail] = useState<MissionDetail>();
+  const [error, setError] = useState<string>();
+  const [loading, setLoading] = useState(true);
+
+  const load = useCallback(async (): Promise<void> => {
+    try {
+      setLoading(true);
+      const listResponse = await window.jupiter.request({
+        schemaVersion: 1,
+        kind: 'query',
+        name: 'missions.list',
+        context: rendererContext(),
+        payload: { includeArchived: false },
+      });
+      if (listResponse.status === 'error') throw new Error(listResponse.error.message);
+      const mission = MissionListResultSchema.parse(listResponse.data).missions[0];
+      if (!mission) {
+        setDetail(undefined);
+        setError(undefined);
+        return;
+      }
+      const detailResponse = await window.jupiter.request({
+        schemaVersion: 1,
+        kind: 'query',
+        name: 'missions.get',
+        context: { ...rendererContext(), missionId: mission.missionId },
+        payload: { missionId: mission.missionId },
+      });
+      if (detailResponse.status === 'error') throw new Error(detailResponse.error.message);
+      setDetail(MissionDetailSchema.parse(detailResponse.data));
+      setError(undefined);
+    } catch (loadError) {
+      setError(sanitizedMessage(loadError));
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void load();
+  }, [eventVersion, load]);
+
+  const control = async (action: 'pause' | 'cancel'): Promise<void> => {
+    if (!detail) return;
+    const missionId = detail.mission.missionId;
+    const response = await window.jupiter.request(
+      action === 'pause'
+        ? {
+            schemaVersion: 1,
+            kind: 'command',
+            name: 'missions.pause',
+            context: { ...rendererContext(), missionId },
+            payload: { missionId },
+          }
+        : {
+            schemaVersion: 1,
+            kind: 'command',
+            name: 'missions.cancel',
+            context: { ...rendererContext(), missionId },
+            payload: { missionId },
+          },
+    );
+    if (response.status === 'error') {
+      setError(response.error.message);
+      return;
+    }
+    setDetail(MissionDetailSchema.parse(response.data));
+  };
+
+  if (!detail) {
+    return (
+      <Surface className="mission-card">
+        <div className="panel-heading">
+          <div>
+            <span className="j-eyebrow">{t('currentMission')}</span>
+            <h2>{loading ? t('loading') : t('noActiveMission')}</h2>
+          </div>
+          <StatusBadge tone="neutral">{t('notConfigured')}</StatusBadge>
+        </div>
+        <p>{error ?? (loading ? t('loading') : t('noActiveMissionDescription'))}</p>
+        <div className="mission-metadata">
+          {(['elapsedTime', 'agent', 'skill', 'model'] as const).map((key) => (
+            <div key={key}>
+              <span>{t(key)}</span>
+              <strong>{t('none')}</strong>
+            </div>
+          ))}
+        </div>
+        <p className="mission-progress">{t('progressUnavailable')}</p>
+        <div className="button-row">
+          <Button disabled type="button" variant="secondary">
+            {t('pause')}
+          </Button>
+          <Button disabled type="button" variant="danger">
+            {t('cancel')}
+          </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            onClick={() => {
+              window.location.hash = '#/missions';
+            }}
+          >
+            {t('details')}
+          </Button>
+        </div>
+      </Surface>
+    );
+  }
+
+  const { mission, steps } = detail;
+  const latestExecution = detail.executions.at(-1);
+  const activeSteps = latestExecution
+    ? steps.filter((step) => step.executionId === latestExecution.executionId)
+    : [];
+  const current = activeSteps.find((step) => step.stepId === mission.currentStepId);
+  const completed = activeSteps.filter((step) => step.status === 'COMPLETED').length;
+  const activeStep =
+    current ?? activeSteps.find((step) => step.status === 'RUNNING') ?? activeSteps.at(-1);
   return (
     <Surface className="mission-card">
       <div className="panel-heading">
         <div>
           <span className="j-eyebrow">{t('currentMission')}</span>
-          <h2>{t('noActiveMission')}</h2>
+          <h2>{mission.title}</h2>
         </div>
-        <StatusBadge tone="neutral">{t('unavailable')}</StatusBadge>
+        <StatusBadge
+          tone={
+            mission.status === 'COMPLETED'
+              ? 'success'
+              : mission.status === 'FAILED' || mission.status === 'CANCELLED'
+                ? 'error'
+                : 'neutral'
+          }
+        >
+          {mission.status}
+        </StatusBadge>
       </div>
-      <p>{t('noActiveMissionDescription')}</p>
+      <p>{mission.userRequest}</p>
       <div className="mission-metadata">
-        {(['elapsedTime', 'agent', 'skill', 'model'] as const).map((key) => (
-          <div key={key}>
-            <span>{t(key)}</span>
-            <strong>{t('none')}</strong>
-          </div>
-        ))}
+        <div>
+          <span>{t('elapsedTime')}</span>
+          <strong>
+            {formatTime(detail.executions.at(-1)?.startedAt ?? mission.createdAt, language)}
+          </strong>
+        </div>
+        <div>
+          <span>{t('agent')}</span>
+          <strong>{activeStep?.agent ?? t('notConfigured')}</strong>
+        </div>
+        <div>
+          <span>{t('skill')}</span>
+          <strong>
+            {activeStep && activeStep.skills.length > 0
+              ? activeStep.skills.join(', ')
+              : t('notConfigured')}
+          </strong>
+        </div>
+        <div>
+          <span>{t('model')}</span>
+          <strong>{activeStep?.model ?? t('notConfigured')}</strong>
+        </div>
       </div>
-      <p className="mission-progress">{t('progressUnavailable')}</p>
+      <p className="mission-progress">
+        {activeSteps.length > 0
+          ? `${completed.toString()} / ${activeSteps.length.toString()}`
+          : t('progressUnavailable')}
+      </p>
       <div className="button-row">
-        <Button disabled type="button" variant="secondary">
+        <Button
+          disabled={mission.status !== 'RUNNING'}
+          type="button"
+          variant="secondary"
+          onClick={() => void control('pause')}
+        >
           {t('pause')}
         </Button>
-        <Button disabled type="button" variant="danger">
+        <Button
+          disabled={['COMPLETED', 'PARTIAL_SUCCESS', 'FAILED', 'CANCELLED'].includes(
+            mission.status,
+          )}
+          type="button"
+          variant="danger"
+          onClick={() => void control('cancel')}
+        >
           {t('cancel')}
         </Button>
-        <Button disabled type="button" variant="ghost">
+        <Button
+          type="button"
+          variant="ghost"
+          onClick={() => {
+            window.location.hash = '#/missions';
+          }}
+        >
           {t('details')}
         </Button>
       </div>

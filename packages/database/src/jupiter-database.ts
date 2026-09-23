@@ -12,6 +12,14 @@ import {
   DatabaseDiagnosticsSchema,
   DomainEventSchema,
   ModelDescriptorSchema,
+  MissionArtifactSchema,
+  MissionErrorSchema,
+  MissionExecutionSchema,
+  MissionPermissionSchema,
+  MissionSchema,
+  MissionStepSchema,
+  MissionTransitionSchema,
+  MissionVerificationSchema,
   ProviderSummarySchema,
   type AiSettings,
   type AuditEvent,
@@ -21,6 +29,14 @@ import {
   type ChatMessage,
   type Conversation,
   type ModelDescriptor,
+  type Mission,
+  type MissionArtifact,
+  type MissionError,
+  type MissionExecution,
+  type MissionPermission,
+  type MissionStep,
+  type MissionTransition,
+  type MissionVerification,
   type ProviderSummary,
 } from '@jupiter/contracts';
 import type {
@@ -29,6 +45,7 @@ import type {
   DiagnosticsRepository,
   DomainEventDraft,
   EventStore,
+  MissionRepository,
   ServiceHealthRepository,
 } from '@jupiter/core';
 import { CURRENT_SCHEMA_VERSION, migrate } from './migrations.js';
@@ -56,7 +73,8 @@ export class JupiterDatabase
     AuditRepository,
     ServiceHealthRepository,
     DiagnosticsRepository,
-    AiRepository
+    AiRepository,
+    MissionRepository
 {
   readonly #database: DatabaseSync;
   readonly #filePath: string;
@@ -504,6 +522,346 @@ export class JupiterDatabase
     return rows.map((row) => this.#parseMessage(row));
   }
 
+  createMission(mission: Mission): void {
+    const valid = MissionSchema.parse(mission);
+    this.#database
+      .prepare(
+        `INSERT INTO missions (
+           mission_id, title, user_request, status, priority, plan_json,
+           current_step_id, archived_at, created_at, updated_at
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(
+        valid.missionId,
+        valid.title,
+        valid.userRequest,
+        valid.status,
+        valid.priority,
+        valid.plan === undefined ? null : JSON.stringify(valid.plan),
+        valid.currentStepId ?? null,
+        valid.archivedAt ?? null,
+        valid.createdAt,
+        valid.updatedAt,
+      );
+  }
+
+  updateMission(mission: Mission): void {
+    const valid = MissionSchema.parse(mission);
+    this.#database
+      .prepare(
+        `UPDATE missions SET
+           title = ?, user_request = ?, status = ?, priority = ?, plan_json = ?,
+           current_step_id = ?, archived_at = ?, updated_at = ?
+         WHERE mission_id = ?`,
+      )
+      .run(
+        valid.title,
+        valid.userRequest,
+        valid.status,
+        valid.priority,
+        valid.plan === undefined ? null : JSON.stringify(valid.plan),
+        valid.currentStepId ?? null,
+        valid.archivedAt ?? null,
+        valid.updatedAt,
+        valid.missionId,
+      );
+  }
+
+  getMission(missionId: string): Mission | undefined {
+    const row = this.#database
+      .prepare('SELECT * FROM missions WHERE mission_id = ?')
+      .get(missionId) as Record<string, unknown> | undefined;
+    return row === undefined ? undefined : this.#parseMission(row);
+  }
+
+  listMissions(includeArchived = false): Mission[] {
+    const rows = this.#database
+      .prepare(
+        `SELECT * FROM missions
+          WHERE (? = 1 OR archived_at IS NULL)
+          ORDER BY updated_at DESC, mission_id DESC`,
+      )
+      .all(includeArchived ? 1 : 0) as Record<string, unknown>[];
+    return rows.map((row) => this.#parseMission(row));
+  }
+
+  createMissionExecution(execution: MissionExecution): void {
+    const valid = MissionExecutionSchema.parse(execution);
+    this.#database
+      .prepare(
+        `INSERT INTO mission_executions (
+           execution_id, mission_id, attempt, prior_execution_id, status, started_at, ended_at
+         ) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(
+        valid.executionId,
+        valid.missionId,
+        valid.attempt,
+        valid.priorExecutionId ?? null,
+        valid.status,
+        valid.startedAt,
+        valid.endedAt ?? null,
+      );
+  }
+
+  updateMissionExecution(execution: MissionExecution): void {
+    const valid = MissionExecutionSchema.parse(execution);
+    this.#database
+      .prepare('UPDATE mission_executions SET status = ?, ended_at = ? WHERE execution_id = ?')
+      .run(valid.status, valid.endedAt ?? null, valid.executionId);
+  }
+
+  listMissionExecutions(missionId: string): MissionExecution[] {
+    const rows = this.#database
+      .prepare('SELECT * FROM mission_executions WHERE mission_id = ? ORDER BY attempt ASC')
+      .all(missionId) as Record<string, unknown>[];
+    return rows.map((row) =>
+      MissionExecutionSchema.parse({
+        executionId: row.execution_id,
+        missionId: row.mission_id,
+        attempt: Number(row.attempt),
+        ...(row.prior_execution_id === null ? {} : { priorExecutionId: row.prior_execution_id }),
+        status: row.status,
+        startedAt: row.started_at,
+        ...(row.ended_at === null ? {} : { endedAt: row.ended_at }),
+      }),
+    );
+  }
+
+  appendMissionTransition(transition: MissionTransition): void {
+    const valid = MissionTransitionSchema.parse(transition);
+    this.#database
+      .prepare(
+        `INSERT INTO mission_transitions (
+           transition_id, mission_id, execution_id, from_status, to_status,
+           accepted, reason, occurred_at
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(
+        valid.transitionId,
+        valid.missionId,
+        valid.executionId,
+        valid.fromStatus,
+        valid.toStatus,
+        valid.accepted ? 1 : 0,
+        valid.reason,
+        valid.occurredAt,
+      );
+  }
+
+  listMissionTransitions(missionId: string): MissionTransition[] {
+    const rows = this.#database
+      .prepare(
+        `SELECT * FROM mission_transitions
+          WHERE mission_id = ? ORDER BY occurred_at ASC, transition_id ASC`,
+      )
+      .all(missionId) as Record<string, unknown>[];
+    return rows.map((row) =>
+      MissionTransitionSchema.parse({
+        transitionId: row.transition_id,
+        missionId: row.mission_id,
+        executionId: row.execution_id,
+        fromStatus: row.from_status,
+        toStatus: row.to_status,
+        accepted: Number(row.accepted) === 1,
+        reason: row.reason,
+        occurredAt: row.occurred_at,
+      }),
+    );
+  }
+
+  upsertMissionStep(step: MissionStep): void {
+    const valid = MissionStepSchema.parse(step);
+    this.#database
+      .prepare(
+        `INSERT INTO mission_steps (
+           step_id, mission_id, execution_id, position, title, required, status,
+           agent, model, skills_json, started_at, completed_at, sanitized_error
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(step_id) DO UPDATE SET
+           position = excluded.position, title = excluded.title, required = excluded.required,
+           status = excluded.status, agent = excluded.agent, model = excluded.model,
+           skills_json = excluded.skills_json, started_at = excluded.started_at,
+           completed_at = excluded.completed_at, sanitized_error = excluded.sanitized_error`,
+      )
+      .run(
+        valid.stepId,
+        valid.missionId,
+        valid.executionId,
+        valid.position,
+        valid.title,
+        valid.required ? 1 : 0,
+        valid.status,
+        valid.agent ?? null,
+        valid.model ?? null,
+        JSON.stringify(valid.skills),
+        valid.startedAt ?? null,
+        valid.completedAt ?? null,
+        valid.sanitizedError ?? null,
+      );
+  }
+
+  listMissionSteps(missionId: string): MissionStep[] {
+    const rows = this.#database
+      .prepare('SELECT * FROM mission_steps WHERE mission_id = ? ORDER BY position, step_id')
+      .all(missionId) as Record<string, unknown>[];
+    return rows.map((row) =>
+      MissionStepSchema.parse({
+        stepId: row.step_id,
+        missionId: row.mission_id,
+        executionId: row.execution_id,
+        position: Number(row.position),
+        title: row.title,
+        required: Number(row.required) === 1,
+        status: row.status,
+        ...(row.agent === null ? {} : { agent: row.agent }),
+        ...(row.model === null ? {} : { model: row.model }),
+        skills: this.#parseJson(row.skills_json),
+        ...(row.started_at === null ? {} : { startedAt: row.started_at }),
+        ...(row.completed_at === null ? {} : { completedAt: row.completed_at }),
+        ...(row.sanitized_error === null ? {} : { sanitizedError: row.sanitized_error }),
+      }),
+    );
+  }
+
+  upsertMissionPermission(permission: MissionPermission): void {
+    const valid = MissionPermissionSchema.parse(permission);
+    this.#database
+      .prepare(
+        `INSERT INTO mission_permissions (permission_id, mission_id, name, status, updated_at)
+         VALUES (?, ?, ?, ?, ?)
+         ON CONFLICT(permission_id) DO UPDATE SET
+           name = excluded.name, status = excluded.status, updated_at = excluded.updated_at`,
+      )
+      .run(valid.permissionId, valid.missionId, valid.name, valid.status, valid.updatedAt);
+  }
+
+  listMissionPermissions(missionId: string): MissionPermission[] {
+    const rows = this.#database
+      .prepare('SELECT * FROM mission_permissions WHERE mission_id = ? ORDER BY name')
+      .all(missionId) as Record<string, unknown>[];
+    return rows.map((row) =>
+      MissionPermissionSchema.parse({
+        permissionId: row.permission_id,
+        missionId: row.mission_id,
+        name: row.name,
+        status: row.status,
+        updatedAt: row.updated_at,
+      }),
+    );
+  }
+
+  addMissionArtifact(artifact: MissionArtifact): void {
+    const valid = MissionArtifactSchema.parse(artifact);
+    this.#database
+      .prepare(
+        `INSERT INTO mission_artifacts (
+           mission_artifact_id, mission_id, artifact_id, name, kind, status, created_at
+         ) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(
+        valid.missionArtifactId,
+        valid.missionId,
+        valid.artifactId,
+        valid.name,
+        valid.kind,
+        valid.status,
+        valid.createdAt,
+      );
+  }
+
+  listMissionArtifacts(missionId: string): MissionArtifact[] {
+    const rows = this.#database
+      .prepare('SELECT * FROM mission_artifacts WHERE mission_id = ? ORDER BY created_at')
+      .all(missionId) as Record<string, unknown>[];
+    return rows.map((row) =>
+      MissionArtifactSchema.parse({
+        missionArtifactId: row.mission_artifact_id,
+        missionId: row.mission_id,
+        artifactId: row.artifact_id,
+        name: row.name,
+        kind: row.kind,
+        status: row.status,
+        createdAt: row.created_at,
+      }),
+    );
+  }
+
+  addMissionError(error: MissionError): void {
+    const valid = MissionErrorSchema.parse(error);
+    this.#database
+      .prepare(
+        `INSERT INTO mission_errors (
+           mission_error_id, mission_id, execution_id, step_id, code,
+           message, recoverable, occurred_at
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(
+        valid.missionErrorId,
+        valid.missionId,
+        valid.executionId,
+        valid.stepId ?? null,
+        valid.code,
+        valid.message,
+        valid.recoverable ? 1 : 0,
+        valid.occurredAt,
+      );
+  }
+
+  listMissionErrors(missionId: string): MissionError[] {
+    const rows = this.#database
+      .prepare('SELECT * FROM mission_errors WHERE mission_id = ? ORDER BY occurred_at')
+      .all(missionId) as Record<string, unknown>[];
+    return rows.map((row) =>
+      MissionErrorSchema.parse({
+        missionErrorId: row.mission_error_id,
+        missionId: row.mission_id,
+        executionId: row.execution_id,
+        ...(row.step_id === null ? {} : { stepId: row.step_id }),
+        code: row.code,
+        message: row.message,
+        recoverable: Number(row.recoverable) === 1,
+        occurredAt: row.occurred_at,
+      }),
+    );
+  }
+
+  addMissionVerification(verification: MissionVerification): void {
+    const valid = MissionVerificationSchema.parse(verification);
+    this.#database
+      .prepare(
+        `INSERT INTO mission_verifications (
+           verification_id, mission_id, execution_id, name, passed, summary, verified_at
+         ) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(
+        valid.verificationId,
+        valid.missionId,
+        valid.executionId,
+        valid.name,
+        valid.passed ? 1 : 0,
+        valid.summary,
+        valid.verifiedAt,
+      );
+  }
+
+  listMissionVerifications(missionId: string): MissionVerification[] {
+    const rows = this.#database
+      .prepare('SELECT * FROM mission_verifications WHERE mission_id = ? ORDER BY verified_at')
+      .all(missionId) as Record<string, unknown>[];
+    return rows.map((row) =>
+      MissionVerificationSchema.parse({
+        verificationId: row.verification_id,
+        missionId: row.mission_id,
+        executionId: row.execution_id,
+        name: row.name,
+        passed: Number(row.passed) === 1,
+        summary: row.summary,
+        verifiedAt: row.verified_at,
+      }),
+    );
+  }
+
   transaction<T>(work: () => T): T {
     this.#database.exec('BEGIN IMMEDIATE');
     try {
@@ -589,6 +947,21 @@ export class JupiterDatabase
       ...(row.model_id === null ? {} : { modelId: row.model_id }),
       status: row.status,
       ...(row.usage_json === null ? {} : { usage: this.#parseJson(row.usage_json) }),
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+    });
+  }
+
+  #parseMission(row: Record<string, unknown>): Mission {
+    return MissionSchema.parse({
+      missionId: row.mission_id,
+      title: row.title,
+      userRequest: row.user_request,
+      status: row.status,
+      priority: row.priority,
+      ...(row.plan_json === null ? {} : { plan: this.#parseJson(row.plan_json) }),
+      ...(row.current_step_id === null ? {} : { currentStepId: row.current_step_id }),
+      ...(row.archived_at === null ? {} : { archivedAt: row.archived_at }),
       createdAt: row.created_at,
       updatedAt: row.updated_at,
     });
