@@ -32,6 +32,7 @@ import {
   WorkflowPlanSchema,
   WorkflowStepAttemptSchema,
   WorkflowStepSchema,
+  ComputerActionResultSchema,
   type AiSettings,
   type AuditEvent,
   type CoreServiceHealth,
@@ -60,6 +61,7 @@ import {
   type WorkflowExecution,
   type WorkflowPlan,
   type WorkflowStepAttempt,
+  type ComputerActionResult,
 } from '@jupiter/contracts';
 import type {
   AiRepository,
@@ -72,6 +74,7 @@ import type {
   ServiceHealthRepository,
   SkillRepository,
   WorkflowRepository,
+  ComputerActionRepository,
 } from '@jupiter/core';
 import { CURRENT_SCHEMA_VERSION, migrate } from './migrations.js';
 
@@ -102,7 +105,8 @@ export class JupiterDatabase
     MissionRepository,
     WorkflowRepository,
     SkillRepository,
-    PermissionRepository
+    PermissionRepository,
+    ComputerActionRepository
 {
   readonly #database: DatabaseSync;
   readonly #filePath: string;
@@ -1465,6 +1469,49 @@ export class JupiterDatabase
         metadataRedacted: this.#parseJson(row.metadata_redacted_json),
       }),
     );
+  }
+
+  addComputerAction(action: ComputerActionResult): void {
+    const valid = ComputerActionResultSchema.parse(action);
+    const persisted =
+      valid.output?.uiTree === undefined
+        ? valid
+        : {
+            ...valid,
+            output: {
+              ...valid.output,
+              uiTree: undefined,
+            },
+          };
+    this.#database
+      .prepare(
+        `INSERT INTO computer_actions (
+           action_id, action_type, status, success, adapter_id, interaction_mode,
+           target_kind, target_id, result_json, started_at, completed_at
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(
+        valid.actionId,
+        valid.action,
+        valid.status,
+        valid.success ? 1 : 0,
+        valid.adapterId,
+        valid.interactionMode,
+        valid.target.kind,
+        valid.target.id,
+        JSON.stringify(persisted),
+        valid.startedAt,
+        valid.completedAt,
+      );
+  }
+
+  listComputerActions(limit: number): ComputerActionResult[] {
+    const rows = this.#database
+      .prepare(
+        'SELECT result_json FROM computer_actions ORDER BY started_at DESC, action_id DESC LIMIT ?',
+      )
+      .all(limit) as Record<string, unknown>[];
+    return rows.map((row) => ComputerActionResultSchema.parse(this.#parseJson(row.result_json)));
   }
 
   transaction<T>(work: () => T): T {

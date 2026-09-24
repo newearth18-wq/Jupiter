@@ -67,6 +67,17 @@ import {
   PermissionResolveInputSchema,
   PermissionRevokeInputSchema,
 } from './permission.js';
+import {
+  ComputerActionInputSchema,
+  ComputerActionResultSchema,
+  ComputerCancelInputSchema,
+  ComputerCancelResultSchema,
+  ComputerHistoryInputSchema,
+  ComputerHistoryResultSchema,
+  ComputerRuntimeStatusSchema,
+  NotepadDemoInputSchema,
+  NotepadDemoResultSchema,
+} from './computer.js';
 
 const EmptyPayloadSchema = z.object({}).strict();
 
@@ -319,6 +330,27 @@ const PermissionRevokeRequestSchema = rpcRequest(
   'permissions.revoke',
   PermissionRevokeInputSchema,
 );
+const ComputerStatusRequestSchema = rpcRequest('query', 'computer.status', EmptyPayloadSchema);
+const ComputerHistoryRequestSchema = rpcRequest(
+  'query',
+  'computer.history',
+  ComputerHistoryInputSchema,
+);
+const ComputerExecuteRequestSchema = rpcRequest(
+  'command',
+  'computer.execute',
+  ComputerActionInputSchema,
+);
+const ComputerCancelRequestSchema = rpcRequest(
+  'command',
+  'computer.cancel',
+  ComputerCancelInputSchema,
+);
+const ComputerNotepadDemoRequestSchema = rpcRequest(
+  'command',
+  'computer.demo.notepad',
+  NotepadDemoInputSchema,
+);
 
 export const RpcRequestEnvelopeSchema = z.discriminatedUnion('name', [
   CorePingRequestSchema,
@@ -375,6 +407,11 @@ export const RpcRequestEnvelopeSchema = z.discriminatedUnion('name', [
   PermissionCreateRequestSchema,
   PermissionResolveRequestSchema,
   PermissionRevokeRequestSchema,
+  ComputerStatusRequestSchema,
+  ComputerHistoryRequestSchema,
+  ComputerExecuteRequestSchema,
+  ComputerCancelRequestSchema,
+  ComputerNotepadDemoRequestSchema,
 ]);
 
 export const RpcRequestNameSchema = z.enum([
@@ -432,6 +469,11 @@ export const RpcRequestNameSchema = z.enum([
   'permissions.request',
   'permissions.resolve',
   'permissions.revoke',
+  'computer.status',
+  'computer.history',
+  'computer.execute',
+  'computer.cancel',
+  'computer.demo.notepad',
 ]);
 
 export const RpcSuccessEnvelopeSchema = z
@@ -574,6 +616,16 @@ export function parseRpcSuccessData(
       return PermissionResolutionResultSchema.parse(data);
     case 'permissions.revoke':
       return z.object({ revoked: z.boolean() }).strict().parse(data);
+    case 'computer.status':
+      return ComputerRuntimeStatusSchema.parse(data);
+    case 'computer.history':
+      return ComputerHistoryResultSchema.parse(data);
+    case 'computer.execute':
+      return ComputerActionResultSchema.parse(data);
+    case 'computer.cancel':
+      return ComputerCancelResultSchema.parse(data);
+    case 'computer.demo.notepad':
+      return NotepadDemoResultSchema.parse(data);
   }
 }
 

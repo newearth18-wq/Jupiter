@@ -83,6 +83,8 @@ importers:
         specifier: '>=19'
         version: 19.3.0(react@19.3.0)
 
+  services/agent-runtime: {}
+
   services/ai-runtime: {}
 
   services/mission-runtime: {}

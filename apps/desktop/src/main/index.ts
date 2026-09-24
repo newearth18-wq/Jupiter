@@ -6,6 +6,7 @@ import {
   BootstrapStateSchema,
   CancelRequestSchema,
   MissionDetailSchema,
+  PermissionRequestListResultSchema,
   RpcRequestEnvelopeSchema,
   RetryStartupRequestSchema,
   WorkflowDetailSchema,
@@ -292,6 +293,64 @@ async function writeSmokeEvidence(window: BrowserWindow): Promise<void> {
     );
   }
 
+  let computerSmoke: unknown;
+  const computerSmokeOutput = process.env.JUPITER_COMPUTER_SMOKE_OUTPUT;
+  if (coreRuntime && computerSmokeOutput) {
+    const runtime = coreRuntime;
+    const executionId = randomUUID();
+    const demoPayload = {
+      executionId,
+      outputPath: computerSmokeOutput,
+      text: 'Hello Jupiter',
+      overwrite: false,
+    };
+    const request = (name: string, kind: 'query' | 'command', payload: unknown) =>
+      runtime.request(
+        {
+          schemaVersion: 1,
+          kind,
+          name,
+          context: {
+            requestId: randomUUID(),
+            executionId,
+            actor: 'test',
+            timestamp: new Date().toISOString(),
+          },
+          payload,
+        },
+        'test',
+        new AbortController().signal,
+      );
+    const firstAttempt = await request('computer.demo.notepad', 'command', demoPayload);
+    const pending = await request('permissions.requests', 'query', { status: 'PENDING' });
+    const permission =
+      pending.status === 'success'
+        ? PermissionRequestListResultSchema.parse(pending.data).requests.find(
+            (item: { capability: string; target: { id: string } }) =>
+              item.capability === 'computer.notepad_demo' && item.target.id === computerSmokeOutput,
+          )
+        : undefined;
+    const resolution = permission
+      ? await request('permissions.resolve', 'command', {
+          requestId: permission.requestId,
+          decision: 'ALLOW_ONCE',
+        })
+      : undefined;
+    const result =
+      resolution?.status === 'success'
+        ? await request('computer.demo.notepad', 'command', demoPayload)
+        : undefined;
+    computerSmoke = {
+      firstAttemptStatus: firstAttempt.status,
+      firstAttemptCode: firstAttempt.status === 'error' ? firstAttempt.error.code : null,
+      permissionFound: Boolean(permission),
+      criticalAlwaysAllowOffered: permission?.availableDecisions.includes('ALWAYS_ALLOW') ?? null,
+      resolutionStatus: resolution?.status ?? 'skipped',
+      resultStatus: result?.status ?? 'skipped',
+      result: result?.status === 'success' ? result.data : undefined,
+    };
+  }
+
   const renderer: unknown = await window.webContents.executeJavaScript(`
     new Promise((resolve) => {
       const started = Date.now();
@@ -456,6 +515,15 @@ async function writeSmokeEvidence(window: BrowserWindow): Promise<void> {
           for (const screenId of screenIds) {
             location.hash = '#/' + screenId;
             await wait(80);
+            if (screenId === 'devices') {
+              const computerStarted = Date.now();
+              while (
+                document.querySelector('[data-computer-state]')?.getAttribute('data-computer-state') === 'loading' &&
+                Date.now() - computerStarted < 3000
+              ) {
+                await wait(25);
+              }
+            }
             if (screenId === 'missions') {
               const missionDetailStarted = Date.now();
               while (
@@ -495,7 +563,8 @@ async function writeSmokeEvidence(window: BrowserWindow): Promise<void> {
               id: screenId,
               rendered: document.querySelector('[data-screen="' + screenId + '"]') !== null,
               title: document.querySelector('[data-testid="screen-title"]')?.textContent ?? null,
-              availability: document.querySelector('[data-testid="availability-state"]')?.getAttribute('data-availability') ?? null
+              availability: document.querySelector('[data-testid="availability-state"]')?.getAttribute('data-availability') ?? null,
+              computerState: document.querySelector('[data-computer-state]')?.getAttribute('data-computer-state') ?? null
             });
           }
 
@@ -642,6 +711,30 @@ async function writeSmokeEvidence(window: BrowserWindow): Promise<void> {
       inspect();
     });
   `);
+  const earlyScreenshotPath = process.env.JUPITER_SMOKE_SCREENSHOT_PATH;
+  const earlyScreenshotScreen = process.env.JUPITER_SMOKE_SCREENSHOT_SCREEN ?? 'home';
+  if (earlyScreenshotPath && earlyScreenshotScreen === 'devices') {
+    window.setContentSize(1180, 760);
+    await window.webContents.executeJavaScript(`new Promise((resolve) => {
+      location.hash = '#/devices';
+      window.dispatchEvent(new HashChangeEvent('hashchange'));
+      const navigation = document.querySelector('[data-nav-id="devices"]');
+      if (navigation instanceof HTMLElement) navigation.click();
+      const startedAt = Date.now();
+      const waitForComputer = () => {
+        const state = document.querySelector('[data-computer-state]')?.getAttribute('data-computer-state');
+        if ((state && state !== 'loading') || Date.now() - startedAt >= 3000) {
+          setTimeout(resolve, 500);
+          return;
+        }
+        setTimeout(waitForComputer, 50);
+      };
+      waitForComputer();
+    })`);
+    const screenshot = await window.webContents.capturePage();
+    mkdirSync(dirname(earlyScreenshotPath), { recursive: true });
+    writeFileSync(earlyScreenshotPath, screenshot.toPNG());
+  }
   const aiSmokeBaseUrl = process.env.JUPITER_AI_SMOKE_BASE_URL;
   const aiSmokeCredential = process.env.JUPITER_AI_SMOKE_CREDENTIAL;
   const ai: unknown =
@@ -1048,13 +1141,14 @@ async function writeSmokeEvidence(window: BrowserWindow): Promise<void> {
     }
   }
   const screenshotPath = process.env.JUPITER_SMOKE_SCREENSHOT_PATH;
-  if (screenshotPath) {
-    const screenshotScreen = process.env.JUPITER_SMOKE_SCREENSHOT_SCREEN ?? 'home';
+  const screenshotScreen = process.env.JUPITER_SMOKE_SCREENSHOT_SCREEN ?? 'home';
+  if (screenshotPath && screenshotScreen !== 'devices') {
     const screenshotScreenLiteral = JSON.stringify(screenshotScreen);
     window.setContentSize(1180, 760);
     await window.webContents.executeJavaScript(`new Promise((resolve) => {
       const targetScreen = ${screenshotScreenLiteral};
       location.hash = '#/' + targetScreen;
+      window.dispatchEvent(new HashChangeEvent('hashchange'));
       const targetNavigation = document.querySelector('[data-nav-id="' + targetScreen + '"]');
       if (targetNavigation instanceof HTMLElement) targetNavigation.click();
       const startedAt = Date.now();
@@ -1065,6 +1159,8 @@ async function writeSmokeEvidence(window: BrowserWindow): Promise<void> {
           document.querySelector('[data-testid="mission-detail"]') !== null;
         const skillsReady = targetScreen !== 'skills' ||
           document.querySelector('[data-testid="skill-detail"]') !== null;
+        const computerReady = targetScreen !== 'devices' ||
+          !['loading', null].includes(document.querySelector('[data-computer-state]')?.getAttribute('data-computer-state') ?? null);
         if (
           targetScreen === 'skills' && !skillsReady && !skillRefreshTriggered &&
           Date.now() - startedAt > 750
@@ -1073,7 +1169,7 @@ async function writeSmokeEvidence(window: BrowserWindow): Promise<void> {
           const refresh = document.querySelector('.skill-toolbar .j-button');
           if (refresh instanceof HTMLElement) refresh.click();
         }
-        if ((activeScreen === targetScreen && missionReady && skillsReady) || Date.now() - startedAt >= 3000) {
+        if ((activeScreen === targetScreen && missionReady && skillsReady && computerReady) || Date.now() - startedAt >= 3000) {
           setTimeout(resolve, 500);
           return;
         }
@@ -1095,6 +1191,7 @@ async function writeSmokeEvidence(window: BrowserWindow): Promise<void> {
     keyboardNavigation,
     skillWorkflow,
     permissionFixture,
+    computerSmoke,
     persistedWindowState: coreRuntime?.getWindowState(),
     webPreferences: {
       contextIsolation: secureWebPreferences.contextIsolation,
@@ -1167,6 +1264,10 @@ if (!hasInstanceLock) {
         dataDirectory,
         version: app.getVersion(),
         forceServiceFailure: process.env.JUPITER_FORCE_SERVICE_FAILURE === '1',
+        computerHostPath: app.isPackaged
+          ? join(process.resourcesPath, 'computer-agent', 'windows-automation-host.ps1')
+          : join(app.getAppPath(), '../../services/agent-runtime/src/windows-automation-host.ps1'),
+        defaultComputerDemoPath: join(app.getPath('desktop'), 'Jupiter-Hello.txt'),
       });
       unsubscribeCoreEvents = coreRuntime.subscribe(broadcastDomainEvent);
       unsubscribeChatEvents = coreRuntime.subscribeChat(broadcastChatStream);

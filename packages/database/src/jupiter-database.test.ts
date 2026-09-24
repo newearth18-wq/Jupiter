@@ -120,4 +120,39 @@ describe('JupiterDatabase', () => {
     expect(restored.listAfter(0, 10)[0]?.type).toBe('backup.fixture');
     restored.close();
   });
+
+  it('persists Computer Agent history without UI-tree content', () => {
+    const database = JupiterDatabase.open(createDatabasePath());
+    const timestamp = new Date().toISOString();
+    database.addComputerAction({
+      actionId: randomUUID(),
+      action: 'READ_UI_TREE',
+      target: { kind: 'window', id: 'process:42', display: 'Fixture window', processId: 42 },
+      success: true,
+      status: 'SUCCESS',
+      observation: 'Observed a semantic hierarchy.',
+      evidence: [],
+      output: {
+        nodeCount: 1,
+        uiTree: [
+          {
+            name: 'Sensitive document title',
+            automationId: 'document',
+            controlType: 'Document',
+            className: 'Fixture',
+            depth: 0,
+            enabled: true,
+          },
+        ],
+      },
+      adapterId: 'generic-windows',
+      interactionMode: 'WINDOWS_UI_AUTOMATION',
+      coordinateFallbackUsed: false,
+      startedAt: timestamp,
+      completedAt: timestamp,
+    });
+
+    expect(database.listComputerActions(1)[0]?.output).toEqual({ nodeCount: 1 });
+    database.close();
+  });
 });

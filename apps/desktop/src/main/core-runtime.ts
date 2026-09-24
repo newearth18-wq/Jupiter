@@ -18,12 +18,15 @@ import {
   type DurableWorkflowRuntimeDependencies,
 } from '@jupiter/workflow-runtime';
 import { createInternalSkills, ExecutableSkillRegistry } from '@jupiter/skill-runtime';
+import { PowerShellAutomationProcessHost, WindowsComputerAgent } from '@jupiter/agent-runtime';
 import { DpapiCredentialVault } from './dpapi-credential-vault.js';
 
 export type DesktopCoreRuntimeOptions = {
   dataDirectory: string;
   version: string;
   forceServiceFailure?: boolean;
+  computerHostPath: string;
+  defaultComputerDemoPath: string;
 };
 
 export class DesktopCoreRuntime {
@@ -32,6 +35,7 @@ export class DesktopCoreRuntime {
   readonly #workflowRuntime: DurableWorkflowRuntime;
   readonly #skillRuntime: ExecutableSkillRegistry;
   readonly #permissionRuntime: CapabilityPermissionEngine;
+  readonly #computerRuntime: WindowsComputerAgent;
   #closed = false;
 
   constructor(options: DesktopCoreRuntimeOptions) {
@@ -72,6 +76,12 @@ export class DesktopCoreRuntime {
       automationAllowed: false,
       available: true,
     });
+    this.#computerRuntime = new WindowsComputerAgent({
+      repository: this.#database,
+      permissions: this.#permissionRuntime,
+      host: new PowerShellAutomationProcessHost(options.computerHostPath),
+      defaultDemoPath: options.defaultComputerDemoPath,
+    });
     this.#skillRuntime = new ExecutableSkillRegistry({
       repository: this.#database,
       runtimeVersion: options.version,
@@ -103,6 +113,7 @@ export class DesktopCoreRuntime {
       workflowRuntime: this.#workflowRuntime,
       skillRuntime: this.#skillRuntime,
       permissionRuntime: this.#permissionRuntime,
+      computerRuntime: this.#computerRuntime,
     });
     missionEventBridge.publish = (event) =>
       this.#core.publishRuntimeEvent(event, 'mission-runtime');
@@ -123,6 +134,7 @@ export class DesktopCoreRuntime {
         'workflows.manage',
         'skills.manage',
         'permissions.manage',
+        'computer.manage',
       ],
       start: () => {
         if (options.forceServiceFailure === true) {

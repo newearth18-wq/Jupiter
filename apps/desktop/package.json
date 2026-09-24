@@ -42,6 +42,12 @@
       "out/**/*",
       "package.json"
     ],
+    "extraResources": [
+      {
+        "from": "../../services/agent-runtime/src/windows-automation-host.ps1",
+        "to": "computer-agent/windows-automation-host.ps1"
+      }
+    ],
     "artifactName": "${productName}-${version}-${arch}-Setup.${ext}",
     "win": {
       "target": [

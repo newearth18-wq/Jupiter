@@ -28,6 +28,7 @@ type SmokeEvidence = {
       rendered: boolean;
       title: string | null;
       availability: string | null;
+      computerState?: string | null;
     }[];
     thaiText: { language: string; title: string | null; fits: boolean; lineHeight: string | null };
     focus: { trapped: boolean; restored: boolean };
@@ -136,6 +137,21 @@ type SmokeEvidence = {
     stepOutput: string | null;
   };
   permissionFixture?: { status: string };
+  computerSmoke?: {
+    firstAttemptStatus: string;
+    firstAttemptCode: string | null;
+    permissionFound: boolean;
+    criticalAlwaysAllowOffered: boolean | null;
+    resolutionStatus: string;
+    resultStatus: string;
+    actualContent?: string;
+    result?: {
+      success: boolean;
+      status: string;
+      actions: { action: string; success: boolean; status: string }[];
+      artifact?: { path: string; verified: boolean; sha256: string };
+    };
+  };
   persistedWindowState: { width: number; height: number; maximized: boolean };
   webPreferences: {
     contextIsolation: boolean;
@@ -153,10 +169,12 @@ async function runElectron(options: {
   forceFoundationFailure?: boolean;
   forceServiceFailure?: boolean;
   aiSmoke?: boolean;
+  computerSmoke?: boolean;
 }): Promise<SmokeEvidence> {
   const directory = mkdtempSync(join(tmpdir(), 'jupiter-electron-smoke-'));
   const evidencePath = join(directory, 'evidence.json');
   const credential = 'fixture-provider-credential-never-store-plain';
+  const computerOutputPath = join(directory, 'Hello-Jupiter.txt');
   const fixture = options.aiSmoke ? await startAiFixture() : undefined;
   const child = spawn(electronPath, [desktopDirectory], {
     cwd: desktopDirectory,
@@ -169,6 +187,7 @@ async function runElectron(options: {
       JUPITER_SMOKE_EVIDENCE_PATH: evidencePath,
       JUPITER_FORCE_STARTUP_FAILURE: options.forceFoundationFailure ? '1' : '0',
       JUPITER_FORCE_SERVICE_FAILURE: options.forceServiceFailure ? '1' : '0',
+      ...(options.computerSmoke ? { JUPITER_COMPUTER_SMOKE_OUTPUT: computerOutputPath } : {}),
       ...(fixture === undefined
         ? {}
         : {
@@ -197,6 +216,9 @@ async function runElectron(options: {
 
   expect(exitCode, output.join('')).toBe(0);
   const evidence = JSON.parse(readFileSync(evidencePath, 'utf8')) as SmokeEvidence;
+  if (options.computerSmoke && evidence.computerSmoke) {
+    evidence.computerSmoke.actualContent = readFileSync(computerOutputPath, 'utf8');
+  }
   if (fixture) {
     evidence.fileSecurity = {
       rawSecretFound: filesBelow(directory).some((file) =>
@@ -237,7 +259,7 @@ describe('packaged-shape Electron shell', () => {
     expect(evidence.renderer.diagnostics.status).toBe('success');
     expect(evidence.renderer.diagnostics.data?.database).toMatchObject({
       status: 'operational',
-      schemaVersion: 7,
+      schemaVersion: 8,
       integrity: 'ok',
     });
     expect(evidence.renderer.denied.status).toBe('error');
@@ -309,8 +331,11 @@ describe('packaged-shape Electron shell', () => {
     const evidence = await runElectron({});
     expect(evidence.renderer.screens).toHaveLength(12);
     expect(evidence.renderer.screens.every((screen) => screen.rendered && screen.title)).toBe(true);
+    expect(evidence.renderer.screens.find((screen) => screen.id === 'devices')?.computerState).toBe(
+      'operational',
+    );
     const deferred = evidence.renderer.screens.filter((screen) =>
-      ['memory', 'files', 'automations', 'devices', 'plugins'].includes(screen.id),
+      ['memory', 'files', 'automations', 'plugins'].includes(screen.id),
     );
     expect(deferred.every((screen) => screen.availability !== null)).toBe(true);
     expect(evidence.renderer.thaiText).toMatchObject({
@@ -384,6 +409,33 @@ describe('packaged-shape Electron shell', () => {
     expect(evidence.renderer.diagnostics.data?.status).toBe('degraded');
     expect(evidence.renderer.status).toBeTruthy();
   });
+
+  it('runs the permission-gated Notepad workflow through a real Electron app', async () => {
+    const evidence = await runElectron({ computerSmoke: true });
+    expect(evidence.computerSmoke).toMatchObject({
+      firstAttemptStatus: 'error',
+      firstAttemptCode: 'PERMISSION_REQUIRED',
+      permissionFound: true,
+      criticalAlwaysAllowOffered: false,
+      resolutionStatus: 'success',
+      resultStatus: 'success',
+      actualContent: 'Hello Jupiter',
+      result: {
+        success: true,
+        status: 'SUCCESS',
+        artifact: { verified: true },
+      },
+    });
+    expect(evidence.computerSmoke?.result?.actions.map((action) => action.action)).toEqual([
+      'OPEN_APP',
+      'WAIT_FOR_WINDOW',
+      'TYPE_TEXT',
+      'SAVE_FILE',
+      'CLOSE_APP',
+    ]);
+    expect(evidence.computerSmoke?.result?.actions.every((action) => action.success)).toBe(true);
+    expect(evidence.computerSmoke?.result?.artifact?.sha256).toMatch(/^[a-f0-9]{64}$/);
+  }, 45_000);
 });
 
 async function startAiFixture(): Promise<{ server: Server; baseUrl: string }> {

@@ -472,6 +472,30 @@ export const MIGRATIONS: readonly Migration[] = [
       CREATE INDEX permission_audit_time_idx ON permission_audit (timestamp, audit_id);
     `,
   },
+  {
+    version: 8,
+    name: 'windows_computer_agent',
+    sql: `
+      CREATE TABLE computer_actions (
+        action_id TEXT PRIMARY KEY,
+        action_type TEXT NOT NULL,
+        status TEXT NOT NULL,
+        success INTEGER NOT NULL,
+        adapter_id TEXT NOT NULL,
+        interaction_mode TEXT NOT NULL,
+        target_kind TEXT NOT NULL,
+        target_id TEXT NOT NULL,
+        result_json TEXT NOT NULL,
+        started_at TEXT NOT NULL,
+        completed_at TEXT NOT NULL
+      ) STRICT;
+
+      CREATE INDEX computer_actions_history_idx
+        ON computer_actions (started_at DESC, action_id DESC);
+      CREATE INDEX computer_actions_target_idx
+        ON computer_actions (target_kind, target_id, started_at DESC);
+    `,
+  },
 ] as const;
 
 export const CURRENT_SCHEMA_VERSION = MIGRATIONS.at(-1)?.version ?? 0;

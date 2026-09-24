@@ -15,6 +15,9 @@ const aliases = {
   '@jupiter/skill-runtime': fileURLToPath(
     new URL('../../services/skill-runtime/src/index.ts', import.meta.url),
   ),
+  '@jupiter/agent-runtime': fileURLToPath(
+    new URL('../../services/agent-runtime/src/index.ts', import.meta.url),
+  ),
   '@jupiter/security': fileURLToPath(
     new URL('../../packages/security/src/index.ts', import.meta.url),
   ),

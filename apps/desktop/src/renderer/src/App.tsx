@@ -32,6 +32,7 @@ import { ModelsScreen } from './models-screen.js';
 import { SkillCenter } from './skill-center.js';
 import { windowsNotificationBridge } from './notification-bridge.js';
 import { PermissionCenterDialog } from './permission-center-dialog.js';
+import { ComputerAgentScreen } from './computer-agent-screen.js';
 
 type DialogName = 'permission' | 'identity' | undefined;
 
@@ -67,11 +68,6 @@ const DEFERRED_SCREENS: Readonly<
     title: 'automationsTitle',
     description: 'automationsDescription',
     availability: 'comingLater',
-  },
-  devices: {
-    title: 'devicesTitle',
-    description: 'devicesDescription',
-    availability: 'notConfigured',
   },
   plugins: {
     title: 'pluginsTitle',
@@ -418,6 +414,13 @@ function Screen({
   if (view === 'skills') return <SkillCenter language={preferences.language} />;
   if (view === 'models')
     return <ModelsScreen t={t} onPermissionRequired={() => onDialog('permission')} />;
+  if (view === 'devices')
+    return (
+      <ComputerAgentScreen
+        language={preferences.language}
+        onPermissionRequired={() => onDialog('permission')}
+      />
+    );
   if (view === 'diagnostics') {
     return (
       <DiagnosticsScreen

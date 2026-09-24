@@ -62,6 +62,12 @@ import type {
   CoreServiceHealth,
   DatabaseDiagnostics,
   DomainEvent,
+  ComputerActionInput,
+  ComputerActionResult,
+  ComputerCancelInput,
+  ComputerRuntimeStatus,
+  NotepadDemoInput,
+  NotepadDemoResult,
 } from '@jupiter/contracts';
 
 export type DomainEventDraft = {
@@ -333,5 +339,27 @@ export type PermissionRuntime = {
   listGrants: () => PermissionGrant[];
   revoke: (grantId: string, actor: Actor) => boolean;
   listAudits: (limit: number) => PermissionAuditRecord[];
+  shutdown: () => Promise<void>;
+};
+
+export type ComputerActionRepository = {
+  addComputerAction: (action: ComputerActionResult) => void;
+  listComputerActions: (limit: number) => ComputerActionResult[];
+};
+
+export type ComputerRuntime = {
+  status: () => ComputerRuntimeStatus;
+  history: (limit: number) => ComputerActionResult[];
+  execute: (
+    input: ComputerActionInput,
+    actor: Actor,
+    signal: AbortSignal,
+  ) => Promise<ComputerActionResult>;
+  runNotepadDemo: (
+    input: NotepadDemoInput,
+    actor: Actor,
+    signal: AbortSignal,
+  ) => Promise<NotepadDemoResult>;
+  cancel: (input: ComputerCancelInput) => boolean;
   shutdown: () => Promise<void>;
 };

@@ -18,6 +18,9 @@ import {
   type WorkflowControlInput,
   type WorkflowPlanCreateInput,
   type WorkflowReplanInput,
+  type ComputerActionInput,
+  type ComputerCancelInput,
+  type NotepadDemoInput,
 } from '@jupiter/contracts';
 import { CapabilityDispatcher } from '../capabilities/capability-dispatcher.js';
 import { JupiterError } from '../errors/jupiter-error.js';
@@ -34,6 +37,7 @@ import type {
   WorkflowRuntime,
   SkillRuntime,
   PermissionRuntime,
+  ComputerRuntime,
 } from '../ports.js';
 import { RpcGateway } from '../rpc/rpc-gateway.js';
 import { ServiceManager, type ManagedService } from '../services/service-manager.js';
@@ -50,6 +54,7 @@ export type JupiterCoreDependencies = {
   workflowRuntime?: WorkflowRuntime;
   skillRuntime?: SkillRuntime;
   permissionRuntime?: PermissionRuntime;
+  computerRuntime?: ComputerRuntime;
 };
 
 export class JupiterCore {
@@ -65,6 +70,7 @@ export class JupiterCore {
   readonly #workflowRuntime: WorkflowRuntime | undefined;
   readonly #skillRuntime: SkillRuntime | undefined;
   readonly #permissionRuntime: PermissionRuntime | undefined;
+  readonly #computerRuntime: ComputerRuntime | undefined;
   #started = false;
 
   constructor(dependencies: JupiterCoreDependencies) {
@@ -78,6 +84,7 @@ export class JupiterCore {
     this.#workflowRuntime = dependencies.workflowRuntime;
     this.#skillRuntime = dependencies.skillRuntime;
     this.#permissionRuntime = dependencies.permissionRuntime;
+    this.#computerRuntime = dependencies.computerRuntime;
     this.#dispatcher = new CapabilityDispatcher();
     this.#gateway = new RpcGateway(this.#dispatcher, dependencies.auditRepository);
     this.#registerCapabilities();
@@ -120,6 +127,7 @@ export class JupiterCore {
       this.#workflowRuntime?.shutdown(),
       this.#skillRuntime?.shutdown(),
       this.#permissionRuntime?.shutdown(),
+      this.#computerRuntime?.shutdown(),
       this.#missionRuntime?.shutdown(),
     ]);
   }
@@ -245,6 +253,32 @@ export class JupiterCore {
     if (this.#workflowRuntime) this.#registerWorkflowCapabilities(this.#workflowRuntime);
     if (this.#skillRuntime) this.#registerSkillCapabilities(this.#skillRuntime);
     if (this.#permissionRuntime) this.#registerPermissionCapabilities(this.#permissionRuntime);
+    if (this.#computerRuntime) this.#registerComputerCapabilities(this.#computerRuntime);
+  }
+
+  #registerComputerCapabilities(runtime: ComputerRuntime): void {
+    const register = (
+      capability: string,
+      handler: Parameters<CapabilityDispatcher['register']>[0]['handler'],
+    ): void =>
+      this.#dispatcher.register({
+        capability,
+        allowedActors: ['renderer', 'core', 'service', 'test'],
+        handler,
+      });
+    register('computer.status.read', () => runtime.status());
+    register('computer.history.read', (input) => ({
+      actions: runtime.history((input as { limit?: number }).limit ?? 50),
+    }));
+    register('computer.execute', (input, context) =>
+      runtime.execute(input as ComputerActionInput, context.correlation.actor, context.signal),
+    );
+    register('computer.cancel', (input) => ({
+      cancelled: runtime.cancel(input as ComputerCancelInput),
+    }));
+    register('computer.demo.notepad', (input, context) =>
+      runtime.runNotepadDemo(input as NotepadDemoInput, context.correlation.actor, context.signal),
+    );
   }
 
   #registerPermissionCapabilities(runtime: PermissionRuntime): void {

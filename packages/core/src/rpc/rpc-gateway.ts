@@ -71,6 +71,11 @@ const CAPABILITIES: Readonly<Record<RpcRequestName, string>> = {
   'permissions.request': 'permissions.request',
   'permissions.resolve': 'permissions.resolve',
   'permissions.revoke': 'permissions.revoke',
+  'computer.status': 'computer.status.read',
+  'computer.history': 'computer.history.read',
+  'computer.execute': 'computer.execute',
+  'computer.cancel': 'computer.cancel',
+  'computer.demo.notepad': 'computer.demo.notepad',
 };
 
 export class RpcGateway {
