@@ -33,6 +33,7 @@ import {
   WorkflowStepAttemptSchema,
   WorkflowStepSchema,
   ComputerActionResultSchema,
+  BrowserActionResultSchema,
   type AiSettings,
   type AuditEvent,
   type CoreServiceHealth,
@@ -62,6 +63,7 @@ import {
   type WorkflowPlan,
   type WorkflowStepAttempt,
   type ComputerActionResult,
+  type BrowserActionResult,
 } from '@jupiter/contracts';
 import type {
   AiRepository,
@@ -75,6 +77,7 @@ import type {
   SkillRepository,
   WorkflowRepository,
   ComputerActionRepository,
+  BrowserActionRepository,
 } from '@jupiter/core';
 import { CURRENT_SCHEMA_VERSION, migrate } from './migrations.js';
 
@@ -106,7 +109,8 @@ export class JupiterDatabase
     WorkflowRepository,
     SkillRepository,
     PermissionRepository,
-    ComputerActionRepository
+    ComputerActionRepository,
+    BrowserActionRepository
 {
   readonly #database: DatabaseSync;
   readonly #filePath: string;
@@ -1512,6 +1516,39 @@ export class JupiterDatabase
       )
       .all(limit) as Record<string, unknown>[];
     return rows.map((row) => ComputerActionResultSchema.parse(this.#parseJson(row.result_json)));
+  }
+
+  addBrowserAction(action: BrowserActionResult): void {
+    const valid = BrowserActionResultSchema.parse(action);
+    this.#database
+      .prepare(
+        `INSERT INTO browser_actions (
+           action_id, action_type, status, success, session_id, target_kind,
+           target_id, origin, result_json, started_at, completed_at
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(
+        valid.actionId,
+        valid.action,
+        valid.status,
+        valid.success ? 1 : 0,
+        valid.sessionId ?? null,
+        valid.target.kind,
+        valid.target.id,
+        valid.page?.origin ?? null,
+        JSON.stringify(valid),
+        valid.startedAt,
+        valid.completedAt,
+      );
+  }
+
+  listBrowserActions(limit: number): BrowserActionResult[] {
+    const rows = this.#database
+      .prepare(
+        'SELECT result_json FROM browser_actions ORDER BY started_at DESC, action_id DESC LIMIT ?',
+      )
+      .all(limit) as Record<string, unknown>[];
+    return rows.map((row) => BrowserActionResultSchema.parse(this.#parseJson(row.result_json)));
   }
 
   transaction<T>(work: () => T): T {

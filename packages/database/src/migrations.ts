@@ -496,6 +496,30 @@ export const MIGRATIONS: readonly Migration[] = [
         ON computer_actions (target_kind, target_id, started_at DESC);
     `,
   },
+  {
+    version: 9,
+    name: 'isolated_browser_agent',
+    sql: `
+      CREATE TABLE browser_actions (
+        action_id TEXT PRIMARY KEY,
+        action_type TEXT NOT NULL,
+        status TEXT NOT NULL,
+        success INTEGER NOT NULL,
+        session_id TEXT,
+        target_kind TEXT NOT NULL,
+        target_id TEXT NOT NULL,
+        origin TEXT,
+        result_json TEXT NOT NULL,
+        started_at TEXT NOT NULL,
+        completed_at TEXT NOT NULL
+      ) STRICT;
+
+      CREATE INDEX browser_actions_history_idx
+        ON browser_actions (started_at DESC, action_id DESC);
+      CREATE INDEX browser_actions_session_idx
+        ON browser_actions (session_id, started_at DESC);
+    `,
+  },
 ] as const;
 
 export const CURRENT_SCHEMA_VERSION = MIGRATIONS.at(-1)?.version ?? 0;

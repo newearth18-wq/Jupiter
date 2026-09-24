@@ -19,6 +19,7 @@ import {
 } from '@jupiter/workflow-runtime';
 import { createInternalSkills, ExecutableSkillRegistry } from '@jupiter/skill-runtime';
 import { PowerShellAutomationProcessHost, WindowsComputerAgent } from '@jupiter/agent-runtime';
+import { PlaywrightBrowserAgent, PlaywrightBrowserProcessHost } from '@jupiter/browser-runtime';
 import { DpapiCredentialVault } from './dpapi-credential-vault.js';
 
 export type DesktopCoreRuntimeOptions = {
@@ -27,6 +28,10 @@ export type DesktopCoreRuntimeOptions = {
   forceServiceFailure?: boolean;
   computerHostPath: string;
   defaultComputerDemoPath: string;
+  browserWorkerPath: string;
+  browserExecutablePath?: string;
+  browserProfileRoot: string;
+  browserDownloadDirectory: string;
 };
 
 export class DesktopCoreRuntime {
@@ -36,6 +41,7 @@ export class DesktopCoreRuntime {
   readonly #skillRuntime: ExecutableSkillRegistry;
   readonly #permissionRuntime: CapabilityPermissionEngine;
   readonly #computerRuntime: WindowsComputerAgent;
+  readonly #browserRuntime: PlaywrightBrowserAgent;
   #closed = false;
 
   constructor(options: DesktopCoreRuntimeOptions) {
@@ -82,6 +88,17 @@ export class DesktopCoreRuntime {
       host: new PowerShellAutomationProcessHost(options.computerHostPath),
       defaultDemoPath: options.defaultComputerDemoPath,
     });
+    this.#browserRuntime = new PlaywrightBrowserAgent({
+      repository: this.#database,
+      permissions: this.#permissionRuntime,
+      host: new PlaywrightBrowserProcessHost({
+        workerPath: options.browserWorkerPath,
+        executablePath: options.browserExecutablePath ?? '',
+        profileRoot: options.browserProfileRoot,
+      }),
+      ...(options.browserExecutablePath ? { executablePath: options.browserExecutablePath } : {}),
+      managedDownloadDirectory: options.browserDownloadDirectory,
+    });
     this.#skillRuntime = new ExecutableSkillRegistry({
       repository: this.#database,
       runtimeVersion: options.version,
@@ -114,6 +131,7 @@ export class DesktopCoreRuntime {
       skillRuntime: this.#skillRuntime,
       permissionRuntime: this.#permissionRuntime,
       computerRuntime: this.#computerRuntime,
+      browserRuntime: this.#browserRuntime,
     });
     missionEventBridge.publish = (event) =>
       this.#core.publishRuntimeEvent(event, 'mission-runtime');
@@ -135,6 +153,7 @@ export class DesktopCoreRuntime {
         'skills.manage',
         'permissions.manage',
         'computer.manage',
+        'browser.manage',
       ],
       start: () => {
         if (options.forceServiceFailure === true) {

@@ -9,6 +9,7 @@ import {
 import { Button, EmptyState, StatusBadge, Surface } from '@jupiter/ui';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { computerCopy } from './computer-copy.js';
+import { BrowserAgentPanel } from './browser-agent-panel.js';
 
 export function ComputerAgentScreen({
   language,
@@ -243,6 +244,7 @@ export function ComputerAgentScreen({
           </ol>
         )}
       </Surface>
+      <BrowserAgentPanel language={language} onPermissionRequired={onPermissionRequired} />
     </div>
   );
 }

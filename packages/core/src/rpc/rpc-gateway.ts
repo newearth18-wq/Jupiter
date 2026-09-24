@@ -76,6 +76,11 @@ const CAPABILITIES: Readonly<Record<RpcRequestName, string>> = {
   'computer.execute': 'computer.execute',
   'computer.cancel': 'computer.cancel',
   'computer.demo.notepad': 'computer.demo.notepad',
+  'browser.status': 'browser.status.read',
+  'browser.sessions': 'browser.sessions.read',
+  'browser.history': 'browser.history.read',
+  'browser.execute': 'browser.execute',
+  'browser.cancel': 'browser.cancel',
 };
 
 export class RpcGateway {

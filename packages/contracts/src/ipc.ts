@@ -78,6 +78,16 @@ import {
   NotepadDemoInputSchema,
   NotepadDemoResultSchema,
 } from './computer.js';
+import {
+  BrowserActionInputSchema,
+  BrowserActionResultSchema,
+  BrowserCancelInputSchema,
+  BrowserCancelResultSchema,
+  BrowserHistoryInputSchema,
+  BrowserHistoryResultSchema,
+  BrowserRuntimeStatusSchema,
+  BrowserSessionListResultSchema,
+} from './browser.js';
 
 const EmptyPayloadSchema = z.object({}).strict();
 
@@ -351,6 +361,23 @@ const ComputerNotepadDemoRequestSchema = rpcRequest(
   'computer.demo.notepad',
   NotepadDemoInputSchema,
 );
+const BrowserStatusRequestSchema = rpcRequest('query', 'browser.status', EmptyPayloadSchema);
+const BrowserSessionsRequestSchema = rpcRequest('query', 'browser.sessions', EmptyPayloadSchema);
+const BrowserHistoryRequestSchema = rpcRequest(
+  'query',
+  'browser.history',
+  BrowserHistoryInputSchema,
+);
+const BrowserExecuteRequestSchema = rpcRequest(
+  'command',
+  'browser.execute',
+  BrowserActionInputSchema,
+);
+const BrowserCancelRequestSchema = rpcRequest(
+  'command',
+  'browser.cancel',
+  BrowserCancelInputSchema,
+);
 
 export const RpcRequestEnvelopeSchema = z.discriminatedUnion('name', [
   CorePingRequestSchema,
@@ -412,6 +439,11 @@ export const RpcRequestEnvelopeSchema = z.discriminatedUnion('name', [
   ComputerExecuteRequestSchema,
   ComputerCancelRequestSchema,
   ComputerNotepadDemoRequestSchema,
+  BrowserStatusRequestSchema,
+  BrowserSessionsRequestSchema,
+  BrowserHistoryRequestSchema,
+  BrowserExecuteRequestSchema,
+  BrowserCancelRequestSchema,
 ]);
 
 export const RpcRequestNameSchema = z.enum([
@@ -474,6 +506,11 @@ export const RpcRequestNameSchema = z.enum([
   'computer.execute',
   'computer.cancel',
   'computer.demo.notepad',
+  'browser.status',
+  'browser.sessions',
+  'browser.history',
+  'browser.execute',
+  'browser.cancel',
 ]);
 
 export const RpcSuccessEnvelopeSchema = z
@@ -626,6 +663,16 @@ export function parseRpcSuccessData(
       return ComputerCancelResultSchema.parse(data);
     case 'computer.demo.notepad':
       return NotepadDemoResultSchema.parse(data);
+    case 'browser.status':
+      return BrowserRuntimeStatusSchema.parse(data);
+    case 'browser.sessions':
+      return BrowserSessionListResultSchema.parse(data);
+    case 'browser.history':
+      return BrowserHistoryResultSchema.parse(data);
+    case 'browser.execute':
+      return BrowserActionResultSchema.parse(data);
+    case 'browser.cancel':
+      return BrowserCancelResultSchema.parse(data);
   }
 }
 

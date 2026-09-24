@@ -18,6 +18,9 @@ const aliases = {
   '@jupiter/agent-runtime': fileURLToPath(
     new URL('../../services/agent-runtime/src/index.ts', import.meta.url),
   ),
+  '@jupiter/browser-runtime': fileURLToPath(
+    new URL('../../services/browser-runtime/src/index.ts', import.meta.url),
+  ),
   '@jupiter/security': fileURLToPath(
     new URL('../../packages/security/src/index.ts', import.meta.url),
   ),

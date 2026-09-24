@@ -29,6 +29,7 @@ type SmokeEvidence = {
       title: string | null;
       availability: string | null;
       computerState?: string | null;
+      browserState?: string | null;
     }[];
     thaiText: { language: string; title: string | null; fits: boolean; lineHeight: string | null };
     focus: { trapped: boolean; restored: boolean };
@@ -45,6 +46,7 @@ type SmokeEvidence = {
         database: { status: string; schemaVersion: number; integrity: string };
       };
     };
+    browser: { status: string; data?: { available: boolean; processIsolation: string } };
     denied: { status: string; error?: { category: string } };
     mission: {
       createStatus: string;
@@ -259,11 +261,15 @@ describe('packaged-shape Electron shell', () => {
     expect(evidence.renderer.diagnostics.status).toBe('success');
     expect(evidence.renderer.diagnostics.data?.database).toMatchObject({
       status: 'operational',
-      schemaVersion: 8,
+      schemaVersion: 9,
       integrity: 'ok',
     });
     expect(evidence.renderer.denied.status).toBe('error');
     expect(evidence.renderer.denied.error?.category).toBe('permission');
+    expect(evidence.renderer.browser).toMatchObject({
+      status: 'success',
+      data: { available: true, processIsolation: 'dedicated-node-process' },
+    });
     expect(evidence.renderer.mission).toMatchObject({
       createStatus: 'success',
       cancelStatus: 'success',
@@ -332,6 +338,9 @@ describe('packaged-shape Electron shell', () => {
     expect(evidence.renderer.screens).toHaveLength(12);
     expect(evidence.renderer.screens.every((screen) => screen.rendered && screen.title)).toBe(true);
     expect(evidence.renderer.screens.find((screen) => screen.id === 'devices')?.computerState).toBe(
+      'operational',
+    );
+    expect(evidence.renderer.screens.find((screen) => screen.id === 'devices')?.browserState).toBe(
       'operational',
     );
     const deferred = evidence.renderer.screens.filter((screen) =>

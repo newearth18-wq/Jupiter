@@ -13,11 +13,11 @@
     "postinstall": "pnpm run metadata",
     "metadata": "node scripts/generate-build-metadata.mjs --channel=development",
     "metadata:production": "node scripts/generate-build-metadata.mjs --channel=stable",
-    "dev": "pnpm run metadata && pnpm --filter @jupiter/contracts build && pnpm --filter @jupiter/core build && pnpm --filter @jupiter/database build && pnpm --filter @jupiter/security build && pnpm --filter @jupiter/agent-runtime build && pnpm --filter @jupiter/ai-runtime build && pnpm --filter @jupiter/mission-runtime build && pnpm --filter @jupiter/skill-runtime build && pnpm --filter @jupiter/workflow-runtime build && pnpm --filter @jupiter/ui build && pnpm --filter @jupiter/desktop dev",
-    "build": "pnpm run metadata:production && pnpm --filter @jupiter/contracts build && pnpm --filter @jupiter/core build && pnpm --filter @jupiter/database build && pnpm --filter @jupiter/security build && pnpm --filter @jupiter/agent-runtime build && pnpm --filter @jupiter/ai-runtime build && pnpm --filter @jupiter/mission-runtime build && pnpm --filter @jupiter/skill-runtime build && pnpm --filter @jupiter/workflow-runtime build && pnpm --filter @jupiter/ui build && pnpm --filter @jupiter/desktop build",
+    "dev": "pnpm run metadata && pnpm --filter @jupiter/contracts build && pnpm --filter @jupiter/core build && pnpm --filter @jupiter/database build && pnpm --filter @jupiter/security build && pnpm --filter @jupiter/agent-runtime build && pnpm --filter @jupiter/browser-runtime build && pnpm --filter @jupiter/ai-runtime build && pnpm --filter @jupiter/mission-runtime build && pnpm --filter @jupiter/skill-runtime build && pnpm --filter @jupiter/workflow-runtime build && pnpm --filter @jupiter/ui build && pnpm --filter @jupiter/desktop dev",
+    "build": "pnpm run metadata:production && pnpm --filter @jupiter/contracts build && pnpm --filter @jupiter/core build && pnpm --filter @jupiter/database build && pnpm --filter @jupiter/security build && pnpm --filter @jupiter/agent-runtime build && pnpm --filter @jupiter/browser-runtime build && pnpm --filter @jupiter/ai-runtime build && pnpm --filter @jupiter/mission-runtime build && pnpm --filter @jupiter/skill-runtime build && pnpm --filter @jupiter/workflow-runtime build && pnpm --filter @jupiter/ui build && pnpm --filter @jupiter/desktop build",
     "test": "pnpm run test:unit && pnpm run test:integration",
     "test:unit": "pnpm run metadata && pnpm -r --if-present run test:unit",
-    "test:integration": "pnpm run build && pnpm --filter @jupiter/agent-runtime test:integration && pnpm --filter @jupiter/desktop test:integration",
+    "test:integration": "pnpm run build && pnpm --filter @jupiter/agent-runtime test:integration && pnpm --filter @jupiter/browser-runtime test:integration && pnpm --filter @jupiter/desktop test:integration",
     "lint": "pnpm run metadata && eslint . --max-warnings 0",
     "typecheck": "pnpm run metadata && pnpm -r --if-present run typecheck",
     "format": "prettier --write .",
@@ -25,7 +25,7 @@
     "secrets:check": "node scripts/check-secrets.mjs",
     "package:windows": "pnpm run build && pnpm --filter @jupiter/desktop package:windows",
     "package:validate": "pnpm run build && pnpm --filter @jupiter/desktop package:dir && node scripts/validate-package.mjs",
-    "verify": "pnpm run secrets:check && pnpm run format:check && pnpm run lint && pnpm run typecheck && pnpm run test:unit && pnpm run build && pnpm --filter @jupiter/agent-runtime test:integration && pnpm --filter @jupiter/desktop test:integration && pnpm --filter @jupiter/desktop package:dir && node scripts/validate-package.mjs"
+    "verify": "pnpm run secrets:check && pnpm run format:check && pnpm run lint && pnpm run typecheck && pnpm run test:unit && pnpm run build && pnpm --filter @jupiter/agent-runtime test:integration && pnpm --filter @jupiter/browser-runtime test:integration && pnpm --filter @jupiter/desktop test:integration && pnpm --filter @jupiter/desktop package:dir && node scripts/validate-package.mjs"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",

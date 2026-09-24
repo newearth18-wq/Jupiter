@@ -1660,6 +1660,57 @@ select {
   white-space: nowrap;
 }
 
+.browser-agent-panel {
+  grid-column: 1 / -1;
+  display: grid;
+  gap: var(--j-space-5);
+}
+
+.browser-agent-panel .section-heading p {
+  max-width: 68ch;
+  margin: var(--j-space-2) 0 0;
+  color: var(--j-text-secondary);
+}
+
+.browser-controls {
+  display: grid;
+  gap: var(--j-space-3);
+}
+
+.browser-controls label {
+  display: grid;
+  gap: var(--j-space-2);
+}
+
+.browser-controls input {
+  width: 100%;
+}
+
+.browser-result,
+.browser-history {
+  display: grid;
+  gap: var(--j-space-2);
+  padding: var(--j-space-4);
+  border: 1px solid var(--j-border-subtle);
+  border-radius: var(--j-radius-md);
+  background: var(--j-surface-muted);
+}
+
+.browser-result pre {
+  max-height: 14rem;
+  margin: 0;
+  padding: var(--j-space-3);
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  border-radius: var(--j-radius-sm);
+  background: var(--j-surface-base);
+}
+
+.browser-history small {
+  color: var(--j-text-secondary);
+}
+
 @media (max-width: 720px) {
   .permission-request-detail dl {
     grid-template-columns: 1fr;

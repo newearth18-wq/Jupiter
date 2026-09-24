@@ -15,6 +15,7 @@ import {
   type DomainEvent,
 } from '@jupiter/contracts';
 import { StructuredLogger } from '@jupiter/core';
+import { findWindowsBrowserExecutable } from '@jupiter/browser-runtime';
 import { app, BrowserWindow, ipcMain, screen, session } from 'electron';
 import type { IpcMainInvokeEvent, Rectangle, WebPreferences } from 'electron';
 import { createBootstrapState } from './bootstrap.js';
@@ -377,6 +378,13 @@ async function writeSmokeEvidence(window: BrowserWindow): Promise<void> {
             context: makeContext(),
             payload: {}
           });
+          const browser = await window.jupiter.request({
+            schemaVersion: 1,
+            kind: 'query',
+            name: 'browser.status',
+            context: makeContext(),
+            payload: {}
+          });
           const denied = await window.jupiter.request({
             schemaVersion: 1,
             kind: 'query',
@@ -564,7 +572,8 @@ async function writeSmokeEvidence(window: BrowserWindow): Promise<void> {
               rendered: document.querySelector('[data-screen="' + screenId + '"]') !== null,
               title: document.querySelector('[data-testid="screen-title"]')?.textContent ?? null,
               availability: document.querySelector('[data-testid="availability-state"]')?.getAttribute('data-availability') ?? null,
-              computerState: document.querySelector('[data-computer-state]')?.getAttribute('data-computer-state') ?? null
+              computerState: document.querySelector('[data-computer-state]')?.getAttribute('data-computer-state') ?? null,
+              browserState: document.querySelector('[data-browser-state]')?.getAttribute('data-browser-state') ?? null
             });
           }
 
@@ -688,6 +697,7 @@ async function writeSmokeEvidence(window: BrowserWindow): Promise<void> {
             hasCredentialApi: typeof window.jupiter?.getCredential,
             ping,
             diagnostics,
+            browser,
             denied,
             mission,
             workflow,
@@ -1260,6 +1270,7 @@ if (!hasInstanceLock) {
         process.env.JUPITER_APP_ENV === 'test' && process.env.JUPITER_DATA_DIR
           ? process.env.JUPITER_DATA_DIR
           : join(app.getPath('userData'), 'data');
+      const browserExecutablePath = findWindowsBrowserExecutable();
       coreRuntime = new DesktopCoreRuntime({
         dataDirectory,
         version: app.getVersion(),
@@ -1268,6 +1279,12 @@ if (!hasInstanceLock) {
           ? join(process.resourcesPath, 'computer-agent', 'windows-automation-host.ps1')
           : join(app.getAppPath(), '../../services/agent-runtime/src/windows-automation-host.ps1'),
         defaultComputerDemoPath: join(app.getPath('desktop'), 'Jupiter-Hello.txt'),
+        browserWorkerPath: app.isPackaged
+          ? join(process.resourcesPath, 'browser-runtime', 'browser-worker.mjs')
+          : join(app.getAppPath(), '../../services/browser-runtime/dist/browser-worker.mjs'),
+        ...(browserExecutablePath ? { browserExecutablePath } : {}),
+        browserProfileRoot: join(dataDirectory, 'browser-profiles'),
+        browserDownloadDirectory: join(dataDirectory, 'browser-downloads'),
       });
       unsubscribeCoreEvents = coreRuntime.subscribe(broadcastDomainEvent);
       unsubscribeChatEvents = coreRuntime.subscribeChat(broadcastChatStream);

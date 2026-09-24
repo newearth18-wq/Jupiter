@@ -68,6 +68,11 @@ import type {
   ComputerRuntimeStatus,
   NotepadDemoInput,
   NotepadDemoResult,
+  BrowserActionInput,
+  BrowserActionResult,
+  BrowserCancelInput,
+  BrowserRuntimeStatus,
+  BrowserSession,
 } from '@jupiter/contracts';
 
 export type DomainEventDraft = {
@@ -361,5 +366,23 @@ export type ComputerRuntime = {
     signal: AbortSignal,
   ) => Promise<NotepadDemoResult>;
   cancel: (input: ComputerCancelInput) => boolean;
+  shutdown: () => Promise<void>;
+};
+
+export type BrowserActionRepository = {
+  addBrowserAction: (action: BrowserActionResult) => void;
+  listBrowserActions: (limit: number) => BrowserActionResult[];
+};
+
+export type BrowserRuntime = {
+  status: () => BrowserRuntimeStatus;
+  sessions: () => BrowserSession[];
+  history: (limit: number) => BrowserActionResult[];
+  execute: (
+    input: BrowserActionInput,
+    actor: Actor,
+    signal: AbortSignal,
+  ) => Promise<BrowserActionResult>;
+  cancel: (input: BrowserCancelInput) => boolean;
   shutdown: () => Promise<void>;
 };

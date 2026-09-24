@@ -46,6 +46,14 @@
       {
         "from": "../../services/agent-runtime/src/windows-automation-host.ps1",
         "to": "computer-agent/windows-automation-host.ps1"
+      },
+      {
+        "from": "../../services/browser-runtime/dist/browser-worker.mjs",
+        "to": "browser-runtime/browser-worker.mjs"
+      },
+      {
+        "from": "../../node_modules/playwright-core",
+        "to": "node_modules/playwright-core"
       }
     ],
     "artifactName": "${productName}-${version}-${arch}-Setup.${ext}",

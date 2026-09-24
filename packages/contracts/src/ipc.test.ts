@@ -40,4 +40,27 @@ describe('versioned IPC contracts', () => {
     expect(ProgressEventSchema.safeParse({ ...progress, totalUnits: 4 }).success).toBe(true);
     expect(ProgressEventSchema.safeParse({ ...progress, totalUnits: 1 }).success).toBe(false);
   });
+
+  it('validates Browser Agent RPC payloads at the renderer boundary', () => {
+    const request = {
+      schemaVersion: 1,
+      kind: 'query',
+      name: 'browser.status',
+      context: {
+        requestId: randomUUID(),
+        actor: 'renderer',
+        timestamp: new Date().toISOString(),
+      },
+      payload: {},
+    };
+    expect(RpcRequestEnvelopeSchema.safeParse(request).success).toBe(true);
+    expect(
+      RpcRequestEnvelopeSchema.safeParse({
+        ...request,
+        kind: 'command',
+        name: 'browser.execute',
+        payload: { action: 'RUN_ARBITRARY_SCRIPT' },
+      }).success,
+    ).toBe(false);
+  });
 });

@@ -155,4 +155,31 @@ describe('JupiterDatabase', () => {
     expect(database.listComputerActions(1)[0]?.output).toEqual({ nodeCount: 1 });
     database.close();
   });
+
+  it('persists validated Browser Agent evidence and origin history', () => {
+    const database = JupiterDatabase.open(createDatabasePath());
+    const timestamp = new Date().toISOString();
+    database.addBrowserAction({
+      actionId: randomUUID(),
+      action: 'NAVIGATE',
+      target: { kind: 'page', id: 'https://example.com', display: 'Example' },
+      sessionId: randomUUID(),
+      tabId: randomUUID(),
+      success: true,
+      status: 'SUCCESS',
+      observation: 'Navigation reached the exact expected origin.',
+      page: { url: 'https://example.com/', origin: 'https://example.com', title: 'Example' },
+      evidence: [],
+      securitySignals: [],
+      startedAt: timestamp,
+      completedAt: timestamp,
+    });
+
+    expect(database.listBrowserActions(1)[0]).toMatchObject({
+      action: 'NAVIGATE',
+      success: true,
+      page: { origin: 'https://example.com' },
+    });
+    database.close();
+  });
 });
