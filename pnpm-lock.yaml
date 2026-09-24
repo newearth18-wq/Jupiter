@@ -72,6 +72,8 @@ importers:
 
   packages/database: {}
 
+  packages/security: {}
+
   packages/ui:
     dependencies:
       react:

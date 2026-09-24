@@ -1,17 +1,19 @@
-# Definition of done — SET 6
+# Definition of done — SET 7
 
-SET 6 is done only when:
+SET 7 is done only when:
 
-- the full SET 0–5 verification remains green;
-- valid Skills register with versioned metadata while invalid definitions and schemas are rejected;
-- input, output, permissions, timeout, enabled state, health, compatibility, and results are validated at the registry boundary;
-- `echo_text` returns exact input and all four required internal Skills are registered and healthy;
-- timeout and cancellation terminate or isolate invocation work and return structured terminal results;
-- disabled or permission-invalid Skills cannot enter their handler;
-- broken handlers and invalid output schemas become structured failures without crashing Core;
-- Skill execution history stores sanitized shape metadata rather than input/output values or secrets;
-- Workflow execution reaches Skills only through the typed registry adapter and invocation context;
-- Skill Center shows provider, category, enabled state, permissions, version, health, last check, runtime, search/filter, and safe internal tests using real Core data;
+- the full SET 0–6 verification remains green;
+- undeclared capabilities and requests without an exact matching grant are denied;
+- Core, Skills, future Agent/plugin/automation requesters, and UI use one typed permission contract;
+- plugin or external-content trust sources cannot request, resolve, or elevate permissions;
+- `DENY`, `ALLOW_ONCE`, `ALLOW_SESSION`, and `ALWAYS_ALLOW` follow their declared lifetime and exact-match rules;
+- `ALLOW_ONCE` is consumed exactly once and session grants disappear with the process;
+- CRITICAL actions always require explicit user approval and never offer persistent allow;
+- persistent grants can be viewed and revoked, and revocation takes effect immediately;
+- target, scope, actor, Mission, session, constraints, expiry, and requester identity are all matched;
+- every authorization decision produces a sanitized audit record;
+- Permission Center displays the complete action, reason, exact target/scope, risk, requester, data exposure, consequence, and reversibility from real Core data;
+- provider credential configure/remove and permission-declared Skill invocation use the central engine;
 - secret scan, format, lint, strict typecheck, unit tests, integration tests, production build, packaged smoke, and package validation pass;
-- no SET 7 Agent runtime or later capability has been started;
+- no SET 8 runtime or later capability has been started;
 - evidence and limitations are reported from actual command output.

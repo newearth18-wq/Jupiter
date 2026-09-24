@@ -1,4 +1,4 @@
-# SET 0–6 architecture
+# SET 0–7 architecture
 
 ## Trust boundaries
 
@@ -8,6 +8,7 @@ React product shell (sandboxed, no Node)
   -> Electron Main verifies exact webContents and origin
   -> strict versioned schema validation
   -> Jupiter Core capability dispatcher
+  -> central deny-by-default Permission Engine
   -> provider-agnostic chat, durable Mission/Workflow, and executable Skill runtime ports
   -> SQLite (WAL, foreign keys, migrations, transactions) + Windows DPAPI credential vault
 ```
@@ -17,15 +18,16 @@ The renderer cannot import Node.js, Electron, filesystem, shell, or credential A
 ## Repository boundaries
 
 - `apps/desktop`: Electron Main host gateway, DPAPI vault, narrow preload, localized React shell, service-backed screens, and Electron acceptance tests.
-- `packages/contracts`: strict schemas for bootstrap, Core RPC/events, diagnostics, UI preferences, routes, AI, Mission, Workflow, Skill definitions/invocations/results, and transient stream events.
+- `packages/contracts`: strict schemas for bootstrap, Core RPC/events, diagnostics, UI preferences, routes, AI, Mission, Workflow, Skills, permission requests/grants/decisions/audit, and transient stream events.
 - `packages/core`: provider-neutral capability dispatcher, RPC gateway, persistent event bus, service lifecycle isolation, typed errors, structured logging, and runtime ports. Core contains no provider-specific code.
-- `packages/database`: SQLite migrations and repositories for settings, ordered events, audit records, service health, AI metadata, conversations/messages, Mission/Workflow state, Skill definitions, health, and sanitized execution metadata.
+- `packages/database`: SQLite migrations and repositories for settings, ordered events, audit records, service health, AI metadata, conversations/messages, Mission/Workflow state, Skill definitions, permission state, and sanitized execution metadata.
+- `packages/security`: central capability catalog and exact-match Permission Engine with deny-by-default authorization, one-time/session/persistent grants, revocation, and sanitized audit.
 - `packages/ui`: reusable Visual Design Lock tokens and accessible primitives for buttons, surfaces, status, empty states, tabs, dialogs, and toasts.
 - `services/ai-runtime`: dynamic provider registry, OpenAI-compatible adapter, capability/privacy model router, explicit fallback policy, and cancelable streaming chat orchestration.
 - `services/mission-runtime`: explicit finite-state machine, durable attempts, transition audit, safe-boundary pause, cancellation propagation, retry linkage, and completion/partial-success guards.
 - `services/workflow-runtime`: strict Planner validation, dependency scheduling, safe parallel batches, conditions, bounded retry/backoff, timeouts, checkpoints, idempotent attempt recovery, artifact passing, compensation, and versioned re-planning.
 - `services/skill-runtime`: versioned executable registry, recursive schema validation, permission/time/health gates, cancellation, structured isolation of failures, sanitized history, four internal Skills, and Workflow executor adapters.
-- Other `services/*`, `packages/security`, and `plugins`: reserved and unavailable until their owning SETs.
+- Other reserved `services/*` and `plugins`: unavailable until their owning SETs.
 
 ## Product shell
 
@@ -61,7 +63,7 @@ Mission creation persists the actionable request immediately in `CREATED`. The f
 
 ## Persistence
 
-Schema migration 4 adds Missions, executions, transitions, steps, permissions, artifacts, errors, and verification results with foreign keys and deterministic ordering. Migration 3 provider/chat tables store no credential material. `ui.preferences` continues to store language, dark-theme variant, motion, avatar, density, text scale, and last view. Electron Main stores sanitized window bounds and maximized state under `ui.window-state`, validates them, and rejects off-screen restoration. Event cursors remain non-secret session state and prevent duplicate replay after renderer refresh.
+Schema migration 4 adds Missions, executions, transitions, steps, declared permissions, artifacts, errors, and verification results with foreign keys and deterministic ordering. Migration 6 adds Skill definitions, health, and sanitized execution metadata. Migration 7 adds central permission requests, durable grants/revocations, and target-hashed audit; session grants never enter SQLite. Migration 3 provider/chat tables store no credential material. `ui.preferences` continues to store language, dark-theme variant, motion, avatar, density, text scale, and last view. Electron Main stores sanitized window bounds and maximized state under `ui.window-state`, validates them, and rejects off-screen restoration. Event cursors remain non-secret session state and prevent duplicate replay after renderer refresh.
 
 ## Workflow boundary
 
@@ -77,6 +79,14 @@ A Skill definition declares identity, semantic version, strict recursive input/o
 
 Only sanitized shape metadata—types, object keys, and collection/string lengths—is stored for inputs and outputs. Values, credentials, and secrets are not written to Skill history. The Skill Center reads registry state through typed RPC and exposes search/filter, health, enable/disable, version/runtime/permission metadata, and a safe test interface only for permission-free Jupiter internal Skills.
 
+## Permission boundary
+
+All privileged actions use the same typed Permission Engine through Core. A request declares capability, actor, requester type and identity, exact target and scope, Mission/session context, constraints, risk, user-facing reason, data leaving the device, consequence, and reversibility. Authorization matches every declared dimension; a missing capability, mismatch, expiry, or missing grant is denied.
+
+`ALLOW_ONCE` is atomically consumed. `ALLOW_SESSION` exists only in process memory and expires on restart. `ALWAYS_ALLOW` persists until revoked. `CRITICAL` operations require an explicit user decision for every use and never offer `ALWAYS_ALLOW`; automated HIGH-risk work is also reduced to one-time approval. Durable grants and revocations are visible in Permission Center. Audit records contain a target fingerprint and bounded metadata keys, never the raw target, reason, document content, or credentials.
+
+External content cannot request or resolve permissions, plugins cannot elevate themselves, and only authenticated Core/test actors may create a permission request. Renderer decisions are marked as explicit user authority. Provider credential configure/remove operations are real CRITICAL actions behind this boundary. Permission-declared Skills call the same engine before their handler can run; the four built-in low-risk Skills currently declare no privileged access.
+
 ## Deferred architecture
 
-Privileged Skills, external plugin loading, the Agent runtime, Memory, Files/Artifact Manager, Automations, devices, Permission Engine UI, Identity Engine UI, and native Windows notifications remain unavailable. SET 6 does not implement or simulate SET 7 capabilities.
+Privileged host adapters, external plugin loading/execution, the Agent runtime, Memory, Files/Artifact Manager, Automations, devices, computer/browser control, Identity Engine UI, and native Windows notifications remain unavailable. SET 7 defines requester contracts for these future runtimes but does not implement or simulate SET 8 capabilities.

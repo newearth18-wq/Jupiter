@@ -45,7 +45,13 @@ const ALL_CAPABILITIES: ModelCapability[] = [
   'usage',
 ];
 
-export function ModelsScreen({ t }: { t: Translator }): React.JSX.Element {
+export function ModelsScreen({
+  t,
+  onPermissionRequired,
+}: {
+  t: Translator;
+  onPermissionRequired: () => void;
+}): React.JSX.Element {
   const [providers, setProviders] = useState<ProviderSummary[]>([]);
   const [models, setModels] = useState<ModelDescriptor[]>([]);
   const [settings, setSettings] = useState<AiSettings>();
@@ -122,6 +128,7 @@ export function ModelsScreen({ t }: { t: Translator }): React.JSX.Element {
       if (credentialRef.current) credentialRef.current.value = '';
       const response = await request;
       if (response.status === 'error') {
+        if (response.error.code === 'PERMISSION_REQUIRED') onPermissionRequired();
         throw new Error(`${response.error.message} ${response.error.userAction}`);
       }
       ProviderSummarySchema.parse(response.data);
@@ -171,6 +178,7 @@ export function ModelsScreen({ t }: { t: Translator }): React.JSX.Element {
       payload: { providerId },
     });
     if (response.status === 'error') {
+      if (response.error.code === 'PERMISSION_REQUIRED') onPermissionRequired();
       setError(response.error.message);
       return;
     }

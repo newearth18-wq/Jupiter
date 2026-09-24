@@ -29,6 +29,17 @@ import type {
   MissionVerification,
   MissionVerificationInput,
   MissionPlanSnapshot,
+  PermissionAuditRecord,
+  PermissionAuthorizationInput,
+  PermissionAuthorizationResult,
+  PermissionCapability,
+  PermissionGrant,
+  PermissionRequestInput,
+  PermissionRequestRecord,
+  PermissionRequestStatus,
+  PermissionResolutionAuthority,
+  PermissionResolutionResult,
+  PermissionResolveInput,
   SkillDefinition,
   SkillExecutionRecord,
   SkillExecutionResult,
@@ -294,5 +305,33 @@ export type SkillRuntime = {
   listVersions: (skillId: string) => SkillRegistryEntry[];
   listExecutions: (skillId?: string) => SkillExecutionRecord[];
   workflowExecutors: () => WorkflowStepExecutor[];
+  shutdown: () => Promise<void>;
+};
+
+export type PermissionRepository = {
+  transaction: <T>(work: () => T) => T;
+  upsertPermissionRequest: (request: PermissionRequestRecord) => void;
+  getPermissionRequest: (requestId: string) => PermissionRequestRecord | undefined;
+  listPermissionRequests: (status?: PermissionRequestStatus) => PermissionRequestRecord[];
+  upsertPermissionGrant: (grant: PermissionGrant) => void;
+  getPermissionGrant: (grantId: string) => PermissionGrant | undefined;
+  listPermissionGrants: () => PermissionGrant[];
+  appendPermissionAudit: (audit: PermissionAuditRecord) => void;
+  listPermissionAudits: (limit: number) => PermissionAuditRecord[];
+};
+
+export type PermissionRuntime = {
+  registerCapability: (capability: PermissionCapability) => PermissionCapability;
+  listCapabilities: () => PermissionCapability[];
+  request: (input: PermissionRequestInput) => PermissionRequestRecord;
+  listRequests: (status?: PermissionRequestStatus) => PermissionRequestRecord[];
+  resolve: (
+    input: PermissionResolveInput,
+    authority: PermissionResolutionAuthority,
+  ) => PermissionResolutionResult;
+  authorize: (input: PermissionAuthorizationInput) => PermissionAuthorizationResult;
+  listGrants: () => PermissionGrant[];
+  revoke: (grantId: string, actor: Actor) => boolean;
+  listAudits: (limit: number) => PermissionAuditRecord[];
   shutdown: () => Promise<void>;
 };

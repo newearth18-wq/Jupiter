@@ -2,9 +2,9 @@ import { randomUUID } from 'node:crypto';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { SkillDefinition } from '@jupiter/contracts';
-import type { SkillExecutable } from '@jupiter/core';
+import type { PermissionRuntime, SkillExecutable } from '@jupiter/core';
 import { JupiterDatabase } from '@jupiter/database';
 import { createInternalSkills } from './internal-skills.js';
 import { ExecutableSkillRegistry } from './skill-registry.js';
@@ -141,6 +141,74 @@ describe('ExecutableSkillRegistry', () => {
     expect(called).toBe(0);
   });
 
+  it('routes permission-declared Skills through the central Permission Engine', async () => {
+    const authorize = vi.fn<PermissionRuntime['authorize']>(() => ({
+      status: 'PROMPT',
+      code: 'PERMISSION_REQUIRED',
+      auditId: randomUUID(),
+      evaluatedAt: new Date().toISOString(),
+    }));
+    const permissionRuntime: PermissionRuntime = {
+      registerCapability: (capability) => capability,
+      listCapabilities: () => [],
+      request: () => {
+        throw new Error('Not used by this test.');
+      },
+      listRequests: () => [],
+      resolve: () => {
+        throw new Error('Not used by this test.');
+      },
+      authorize,
+      listGrants: () => [],
+      revoke: () => false,
+      listAudits: () => [],
+      shutdown: () => Promise.resolve(),
+    };
+    const fixture = registryFixture(false, permissionRuntime);
+    let called = 0;
+    fixture.registry.register(
+      skill(
+        'test.central-gate',
+        () => {
+          called += 1;
+          return Promise.resolve({ output: {} });
+        },
+        { permissions: ['files.read'] },
+      ),
+    );
+    await fixture.registry.healthCheck('test.central-gate', new AbortController().signal);
+    const request = invocation('test.central-gate', {}, { permissions: ['files.read'] });
+
+    await expect(fixture.registry.invoke(request, new AbortController().signal)).rejects.toThrow(
+      'explicit permission',
+    );
+    expect(called).toBe(0);
+    expect(authorize).toHaveBeenCalledWith({
+      capability: 'files.read',
+      actor: 'service',
+      requesterType: 'SKILL',
+      requesterId: 'test.central-gate',
+      declaredCapabilities: ['files.read'],
+      targetId: 'skill:test.central-gate',
+      scopeId: `mission:${request.missionId}`,
+      missionId: request.missionId,
+      constraints: { skillVersion: '1.0.0' },
+      automated: false,
+    });
+
+    authorize.mockReturnValue({
+      status: 'ALLOWED',
+      code: 'PERMISSION_ALLOWED',
+      auditId: randomUUID(),
+      evaluatedAt: new Date().toISOString(),
+      grantId: randomUUID(),
+    });
+    expect((await fixture.registry.invoke(request, new AbortController().signal)).status).toBe(
+      'SUCCESS',
+    );
+    expect(called).toBe(1);
+  });
+
   it('contains broken Skills and converts invalid output into failure', async () => {
     const fixture = registryFixture(true);
     fixture.registry.register(
@@ -185,12 +253,16 @@ describe('ExecutableSkillRegistry', () => {
   });
 });
 
-function registryFixture(internal = false) {
+function registryFixture(internal = false, permissionRuntime?: PermissionRuntime) {
   const directory = mkdtempSync(join(tmpdir(), 'jupiter-skills-'));
   directories.push(directory);
   const database = JupiterDatabase.open(join(directory, 'jupiter.db'));
   databases.push(database);
-  const registry = new ExecutableSkillRegistry({ repository: database, runtimeVersion: '0.1.0' });
+  const registry = new ExecutableSkillRegistry({
+    repository: database,
+    runtimeVersion: '0.1.0',
+    ...(permissionRuntime ? { permissionRuntime } : {}),
+  });
   if (internal) {
     for (const executable of createInternalSkills('0.1.0', () => registry.search({ query: '' }))) {
       registry.register(executable);

@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import {
   CONTRACT_SCHEMA_VERSION,
   DEFAULT_UI_PREFERENCES,
@@ -8,6 +8,9 @@ import {
   type Actor,
   type ChatStreamEvent,
   type DiagnosticsSnapshot,
+  type PermissionRequestInput,
+  type PermissionResolveInput,
+  type ProviderConfigureInput,
   type RpcResponseEnvelope,
   type SkillInvocation,
   type SkillLookupInput,
@@ -17,6 +20,7 @@ import {
   type WorkflowReplanInput,
 } from '@jupiter/contracts';
 import { CapabilityDispatcher } from '../capabilities/capability-dispatcher.js';
+import { JupiterError } from '../errors/jupiter-error.js';
 import { DomainEventBus, type DomainEventListener } from '../events/domain-event-bus.js';
 import type {
   AuditRepository,
@@ -29,6 +33,7 @@ import type {
   ServiceHealthRepository,
   WorkflowRuntime,
   SkillRuntime,
+  PermissionRuntime,
 } from '../ports.js';
 import { RpcGateway } from '../rpc/rpc-gateway.js';
 import { ServiceManager, type ManagedService } from '../services/service-manager.js';
@@ -44,6 +49,7 @@ export type JupiterCoreDependencies = {
   missionRuntime?: MissionRuntime;
   workflowRuntime?: WorkflowRuntime;
   skillRuntime?: SkillRuntime;
+  permissionRuntime?: PermissionRuntime;
 };
 
 export class JupiterCore {
@@ -58,6 +64,7 @@ export class JupiterCore {
   readonly #missionRuntime: MissionRuntime | undefined;
   readonly #workflowRuntime: WorkflowRuntime | undefined;
   readonly #skillRuntime: SkillRuntime | undefined;
+  readonly #permissionRuntime: PermissionRuntime | undefined;
   #started = false;
 
   constructor(dependencies: JupiterCoreDependencies) {
@@ -70,6 +77,7 @@ export class JupiterCore {
     this.#missionRuntime = dependencies.missionRuntime;
     this.#workflowRuntime = dependencies.workflowRuntime;
     this.#skillRuntime = dependencies.skillRuntime;
+    this.#permissionRuntime = dependencies.permissionRuntime;
     this.#dispatcher = new CapabilityDispatcher();
     this.#gateway = new RpcGateway(this.#dispatcher, dependencies.auditRepository);
     this.#registerCapabilities();
@@ -111,6 +119,7 @@ export class JupiterCore {
       this.#chatRuntime?.shutdown(),
       this.#workflowRuntime?.shutdown(),
       this.#skillRuntime?.shutdown(),
+      this.#permissionRuntime?.shutdown(),
       this.#missionRuntime?.shutdown(),
     ]);
   }
@@ -235,6 +244,41 @@ export class JupiterCore {
     if (this.#missionRuntime) this.#registerMissionCapabilities(this.#missionRuntime);
     if (this.#workflowRuntime) this.#registerWorkflowCapabilities(this.#workflowRuntime);
     if (this.#skillRuntime) this.#registerSkillCapabilities(this.#skillRuntime);
+    if (this.#permissionRuntime) this.#registerPermissionCapabilities(this.#permissionRuntime);
+  }
+
+  #registerPermissionCapabilities(runtime: PermissionRuntime): void {
+    const register = (
+      capability: string,
+      handler: Parameters<CapabilityDispatcher['register']>[0]['handler'],
+      allowedActors: Actor[] = ['renderer', 'core', 'test'],
+    ): void => this.#dispatcher.register({ capability, allowedActors, handler });
+    register('permissions.capabilities.read', () => ({ capabilities: runtime.listCapabilities() }));
+    register('permissions.requests.read', (input) => ({
+      requests: runtime.listRequests(
+        (input as { status?: Parameters<PermissionRuntime['listRequests']>[0] }).status,
+      ),
+    }));
+    register('permissions.grants.read', () => ({ grants: runtime.listGrants() }));
+    register('permissions.audit.read', (input) => ({
+      audits: runtime.listAudits((input as { limit?: number }).limit ?? 100),
+    }));
+    register('permissions.request', (input) => runtime.request(input as PermissionRequestInput), [
+      'core',
+      'service',
+      'test',
+    ]);
+    register('permissions.resolve', (input, context) =>
+      runtime.resolve(
+        input as PermissionResolveInput,
+        context.correlation.actor === 'renderer' || context.correlation.actor === 'test'
+          ? 'USER_EXPLICIT'
+          : 'TRUSTED_POLICY',
+      ),
+    );
+    register('permissions.revoke', (input, context) => ({
+      revoked: runtime.revoke((input as { grantId: string }).grantId, context.correlation.actor),
+    }));
   }
 
   #registerSkillCapabilities(runtime: SkillRuntime): void {
@@ -359,12 +403,29 @@ export class JupiterCore {
       });
     };
     register('providers.read', () => ({ providers: runtime.listProviders() }));
-    register('providers.configure', (input, context) =>
-      runtime.configureProvider(input as never, context.signal),
-    );
-    register('providers.remove', async (input) => ({
-      removed: await runtime.removeProvider((input as { providerId: string }).providerId),
-    }));
+    register('providers.configure', async (input, context) => {
+      const payload = input as ProviderConfigureInput;
+      this.#requireProviderPermission(
+        payload.providerId,
+        'configure',
+        `Configure ${payload.displayName}`,
+        `Credential and endpoint settings for ${payload.baseUrl}`,
+        context.correlation.actor,
+        providerConfigurationFingerprint(payload),
+      );
+      return runtime.configureProvider(payload, context.signal);
+    });
+    register('providers.remove', async (input, context) => {
+      const providerId = (input as { providerId: string }).providerId;
+      this.#requireProviderPermission(
+        providerId,
+        'remove',
+        `Remove provider ${providerId}`,
+        'Stored provider configuration and credential',
+        context.correlation.actor,
+      );
+      return { removed: await runtime.removeProvider(providerId) };
+    });
     register('providers.validate', (input, context) =>
       runtime.validateProvider((input as { providerId: string }).providerId, context.signal),
     );
@@ -404,4 +465,115 @@ export class JupiterCore {
     );
     return stored.success ? stored.data : DEFAULT_UI_PREFERENCES;
   }
+
+  #requireProviderPermission(
+    providerId: string,
+    operation: 'configure' | 'remove',
+    targetDisplay: string,
+    scopeDisplay: string,
+    actor: Actor,
+    configurationFingerprint?: string,
+  ): void {
+    const runtime = this.#permissionRuntime;
+    if (!runtime) {
+      throw new JupiterError({
+        code: 'PERMISSION_ENGINE_UNAVAILABLE',
+        category: 'permission',
+        message: 'The permission engine is unavailable.',
+        recoverable: true,
+        retryable: false,
+        userAction: 'Open Diagnostics and restore the permission service before retrying.',
+      });
+    }
+    const requesterType = actor === 'core' || actor === 'service' ? 'CORE' : 'UI';
+    const requesterId = requesterType === 'UI' ? 'models-screen' : 'jupiter-core';
+    const authorization = runtime.authorize({
+      capability: 'credentials.modify',
+      actor,
+      requesterType,
+      requesterId,
+      declaredCapabilities: ['credentials.modify'],
+      targetId: `provider:${providerId}`,
+      scopeId: 'provider-credentials',
+      constraints: {
+        operation,
+        ...(configurationFingerprint ? { configurationFingerprint } : {}),
+      },
+      automated: false,
+    });
+    if (authorization.status === 'ALLOWED') return;
+    if (authorization.status === 'DENIED') {
+      throw new JupiterError({
+        code: 'PERMISSION_DENIED',
+        category: 'permission',
+        message: 'Permission policy denied the provider change.',
+        recoverable: true,
+        retryable: false,
+        userAction: 'Review or revoke the matching policy in Permission Center.',
+      });
+    }
+    const request = runtime.request({
+      capability: 'credentials.modify',
+      action:
+        operation === 'configure'
+          ? 'Add or update an AI provider and its credential.'
+          : 'Remove an AI provider and its stored credential.',
+      reason: 'The user requested this provider configuration change.',
+      target: { type: 'provider', id: `provider:${providerId}`, display: targetDisplay },
+      scope: { type: 'credential', id: 'provider-credentials', display: scopeDisplay },
+      requester: {
+        actor,
+        type: requesterType,
+        id: requesterId,
+        display: requesterType === 'UI' ? 'AI Models settings' : 'Jupiter Core',
+        declaredCapabilities: ['credentials.modify'],
+      },
+      trustSource: requesterType === 'UI' ? 'USER_INTENT' : 'TRUSTED_RUNTIME',
+      dataLeavingDevice: {
+        value: operation === 'configure',
+        description:
+          operation === 'configure'
+            ? 'Provider settings and any credential are sent only to the exact configured endpoint for validation.'
+            : 'No data leaves the device while removing this local configuration.',
+      },
+      consequence:
+        operation === 'configure'
+          ? 'Jupiter provider authentication and routing availability may change.'
+          : 'Jupiter will no longer use this provider until it is configured again.',
+      reversible: true,
+      automated: false,
+      constraints: {
+        operation,
+        ...(configurationFingerprint ? { configurationFingerprint } : {}),
+      },
+    });
+    throw new JupiterError({
+      code: 'PERMISSION_REQUIRED',
+      category: 'permission',
+      message: 'Explicit permission is required before changing provider credentials.',
+      recoverable: true,
+      retryable: true,
+      userAction: 'Review the exact request in Permission Center, then retry the action.',
+      sanitizedDetails: `permissionRequestId=${request.requestId}`,
+    });
+  }
+}
+
+function providerConfigurationFingerprint(input: ProviderConfigureInput): string {
+  const nonSecretConfiguration = JSON.stringify({
+    providerId: input.providerId,
+    displayName: input.displayName,
+    baseUrl: input.baseUrl,
+    locality: input.locality,
+    authScheme: input.authScheme,
+    enabled: input.enabled,
+    capabilities: [...input.capabilities].sort(),
+    credentialAction:
+      input.clearCredential === true
+        ? 'clear'
+        : input.credential === undefined
+          ? 'retain'
+          : 'replace',
+  });
+  return createHash('sha256').update(nonSecretConfiguration).digest('hex');
 }

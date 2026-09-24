@@ -21,6 +21,9 @@ import {
   MissionTransitionSchema,
   MissionVerificationSchema,
   ProviderSummarySchema,
+  PermissionAuditRecordSchema,
+  PermissionGrantSchema,
+  PermissionRequestRecordSchema,
   SkillExecutionRecordSchema,
   SkillRegistryEntrySchema,
   WorkflowArtifactBindingSchema,
@@ -46,6 +49,10 @@ import {
   type MissionTransition,
   type MissionVerification,
   type ProviderSummary,
+  type PermissionAuditRecord,
+  type PermissionGrant,
+  type PermissionRequestRecord,
+  type PermissionRequestStatus,
   type SkillExecutionRecord,
   type SkillRegistryEntry,
   type WorkflowArtifactBinding,
@@ -61,6 +68,7 @@ import type {
   DomainEventDraft,
   EventStore,
   MissionRepository,
+  PermissionRepository,
   ServiceHealthRepository,
   SkillRepository,
   WorkflowRepository,
@@ -93,7 +101,8 @@ export class JupiterDatabase
     AiRepository,
     MissionRepository,
     WorkflowRepository,
-    SkillRepository
+    SkillRepository,
+    PermissionRepository
 {
   readonly #database: DatabaseSync;
   readonly #filePath: string;
@@ -1301,6 +1310,161 @@ export class JupiterDatabase
           .all(skillId)
       : this.#database.prepare('SELECT * FROM skill_executions ORDER BY started_at').all();
     return (rows as Record<string, unknown>[]).map((row) => this.#parseSkillExecution(row));
+  }
+
+  upsertPermissionRequest(request: PermissionRequestRecord): void {
+    const valid = PermissionRequestRecordSchema.parse(request);
+    this.#database
+      .prepare(
+        `INSERT INTO permission_requests (
+           request_id, capability, status, risk, actor, requester_type, requester_id,
+           target_id, scope_id, mission_id, session_id, request_json, created_at, resolved_at
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(request_id) DO UPDATE SET
+           status = excluded.status, request_json = excluded.request_json,
+           resolved_at = excluded.resolved_at`,
+      )
+      .run(
+        valid.requestId,
+        valid.capability,
+        valid.status,
+        valid.risk,
+        valid.requester.actor,
+        valid.requester.type,
+        valid.requester.id,
+        valid.target.id,
+        valid.scope.id,
+        valid.requester.missionId ?? null,
+        valid.sessionId,
+        JSON.stringify(valid),
+        valid.createdAt,
+        valid.resolvedAt ?? null,
+      );
+  }
+
+  getPermissionRequest(requestId: string): PermissionRequestRecord | undefined {
+    const row = this.#database
+      .prepare('SELECT request_json FROM permission_requests WHERE request_id = ?')
+      .get(requestId) as Record<string, unknown> | undefined;
+    return row ? PermissionRequestRecordSchema.parse(this.#parseJson(row.request_json)) : undefined;
+  }
+
+  listPermissionRequests(status?: PermissionRequestStatus): PermissionRequestRecord[] {
+    const rows = status
+      ? this.#database
+          .prepare(
+            'SELECT request_json FROM permission_requests WHERE status = ? ORDER BY created_at DESC',
+          )
+          .all(status)
+      : this.#database
+          .prepare('SELECT request_json FROM permission_requests ORDER BY created_at DESC')
+          .all();
+    return (rows as Record<string, unknown>[]).map((row) =>
+      PermissionRequestRecordSchema.parse(this.#parseJson(row.request_json)),
+    );
+  }
+
+  upsertPermissionGrant(grant: PermissionGrant): void {
+    const valid = PermissionGrantSchema.parse(grant);
+    if (valid.decision === 'ALLOW_SESSION') {
+      throw new Error('Session grants must not be persisted.');
+    }
+    this.#database
+      .prepare(
+        `INSERT INTO permission_grants (
+           grant_id, request_id, capability, decision, actor, requester_type, requester_id,
+           target_id, scope_id, mission_id, expires_at, remaining_uses, revoked_at,
+           grant_json, created_at
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(grant_id) DO UPDATE SET
+           remaining_uses = excluded.remaining_uses, revoked_at = excluded.revoked_at,
+           grant_json = excluded.grant_json`,
+      )
+      .run(
+        valid.grantId,
+        valid.requestId,
+        valid.capability,
+        valid.decision,
+        valid.actor,
+        valid.requesterType,
+        valid.requesterId,
+        valid.targetId,
+        valid.scopeId,
+        valid.missionId ?? null,
+        valid.expiresAt ?? null,
+        valid.remainingUses ?? null,
+        valid.revokedAt ?? null,
+        JSON.stringify(valid),
+        valid.createdAt,
+      );
+  }
+
+  getPermissionGrant(grantId: string): PermissionGrant | undefined {
+    const row = this.#database
+      .prepare('SELECT grant_json FROM permission_grants WHERE grant_id = ?')
+      .get(grantId) as Record<string, unknown> | undefined;
+    return row ? PermissionGrantSchema.parse(this.#parseJson(row.grant_json)) : undefined;
+  }
+
+  listPermissionGrants(): PermissionGrant[] {
+    const rows = this.#database
+      .prepare('SELECT grant_json FROM permission_grants ORDER BY created_at DESC')
+      .all() as Record<string, unknown>[];
+    return rows.map((row) => PermissionGrantSchema.parse(this.#parseJson(row.grant_json)));
+  }
+
+  appendPermissionAudit(audit: PermissionAuditRecord): void {
+    const valid = PermissionAuditRecordSchema.parse(audit);
+    this.#database
+      .prepare(
+        `INSERT INTO permission_audit (
+           audit_id, event_type, capability, actor, requester_type, requester_id,
+           decision, reason_code, risk, target_fingerprint, mission_id, request_id,
+           grant_id, metadata_redacted_json, timestamp
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(
+        valid.auditId,
+        valid.eventType,
+        valid.capability,
+        valid.actor,
+        valid.requesterType,
+        valid.requesterId,
+        valid.decision,
+        valid.reasonCode,
+        valid.risk,
+        valid.targetFingerprint,
+        valid.missionId ?? null,
+        valid.requestId ?? null,
+        valid.grantId ?? null,
+        JSON.stringify(valid.metadataRedacted),
+        valid.timestamp,
+      );
+  }
+
+  listPermissionAudits(limit: number): PermissionAuditRecord[] {
+    const rows = this.#database
+      .prepare('SELECT * FROM permission_audit ORDER BY timestamp DESC, audit_id DESC LIMIT ?')
+      .all(limit) as Record<string, unknown>[];
+    return rows.map((row) =>
+      PermissionAuditRecordSchema.parse({
+        auditId: row.audit_id,
+        eventType: row.event_type,
+        capability: row.capability,
+        actor: row.actor,
+        requesterType: row.requester_type,
+        requesterId: row.requester_id,
+        decision: row.decision,
+        reasonCode: row.reason_code,
+        risk: row.risk,
+        targetFingerprint: row.target_fingerprint,
+        ...(row.mission_id === null ? {} : { missionId: row.mission_id }),
+        ...(row.request_id === null ? {} : { requestId: row.request_id }),
+        ...(row.grant_id === null ? {} : { grantId: row.grant_id }),
+        timestamp: row.timestamp,
+        metadataRedacted: this.#parseJson(row.metadata_redacted_json),
+      }),
+    );
   }
 
   transaction<T>(work: () => T): T {

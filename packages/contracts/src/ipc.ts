@@ -54,6 +54,19 @@ import {
   SkillToggleInputSchema,
   SkillVersionsResultSchema,
 } from './skill.js';
+import {
+  PermissionAuditListInputSchema,
+  PermissionAuditListResultSchema,
+  PermissionCapabilityListResultSchema,
+  PermissionGrantListResultSchema,
+  PermissionRequestInputSchema,
+  PermissionRequestListInputSchema,
+  PermissionRequestListResultSchema,
+  PermissionRequestRecordSchema,
+  PermissionResolutionResultSchema,
+  PermissionResolveInputSchema,
+  PermissionRevokeInputSchema,
+} from './permission.js';
 
 const EmptyPayloadSchema = z.object({}).strict();
 
@@ -275,6 +288,37 @@ const SkillExecutionsRequestSchema = rpcRequest(
   'skills.executions',
   z.object({ skillId: z.string().min(1).max(120).optional() }).strict(),
 );
+const PermissionCapabilitiesRequestSchema = rpcRequest(
+  'query',
+  'permissions.capabilities',
+  EmptyPayloadSchema,
+);
+const PermissionRequestsRequestSchema = rpcRequest(
+  'query',
+  'permissions.requests',
+  PermissionRequestListInputSchema,
+);
+const PermissionGrantsRequestSchema = rpcRequest('query', 'permissions.grants', EmptyPayloadSchema);
+const PermissionAuditRequestSchema = rpcRequest(
+  'query',
+  'permissions.audit',
+  PermissionAuditListInputSchema,
+);
+const PermissionCreateRequestSchema = rpcRequest(
+  'command',
+  'permissions.request',
+  PermissionRequestInputSchema,
+);
+const PermissionResolveRequestSchema = rpcRequest(
+  'command',
+  'permissions.resolve',
+  PermissionResolveInputSchema,
+);
+const PermissionRevokeRequestSchema = rpcRequest(
+  'command',
+  'permissions.revoke',
+  PermissionRevokeInputSchema,
+);
 
 export const RpcRequestEnvelopeSchema = z.discriminatedUnion('name', [
   CorePingRequestSchema,
@@ -324,6 +368,13 @@ export const RpcRequestEnvelopeSchema = z.discriminatedUnion('name', [
   SkillInvokeRequestSchema,
   SkillCancelRequestSchema,
   SkillExecutionsRequestSchema,
+  PermissionCapabilitiesRequestSchema,
+  PermissionRequestsRequestSchema,
+  PermissionGrantsRequestSchema,
+  PermissionAuditRequestSchema,
+  PermissionCreateRequestSchema,
+  PermissionResolveRequestSchema,
+  PermissionRevokeRequestSchema,
 ]);
 
 export const RpcRequestNameSchema = z.enum([
@@ -374,6 +425,13 @@ export const RpcRequestNameSchema = z.enum([
   'skills.invoke',
   'skills.cancel',
   'skills.executions',
+  'permissions.capabilities',
+  'permissions.requests',
+  'permissions.grants',
+  'permissions.audit',
+  'permissions.request',
+  'permissions.resolve',
+  'permissions.revoke',
 ]);
 
 export const RpcSuccessEnvelopeSchema = z
@@ -502,6 +560,20 @@ export function parseRpcSuccessData(
       return z.object({ cancelled: z.boolean() }).strict().parse(data);
     case 'skills.executions':
       return SkillExecutionListResultSchema.parse(data);
+    case 'permissions.capabilities':
+      return PermissionCapabilityListResultSchema.parse(data);
+    case 'permissions.requests':
+      return PermissionRequestListResultSchema.parse(data);
+    case 'permissions.grants':
+      return PermissionGrantListResultSchema.parse(data);
+    case 'permissions.audit':
+      return PermissionAuditListResultSchema.parse(data);
+    case 'permissions.request':
+      return PermissionRequestRecordSchema.parse(data);
+    case 'permissions.resolve':
+      return PermissionResolutionResultSchema.parse(data);
+    case 'permissions.revoke':
+      return z.object({ revoked: z.boolean() }).strict().parse(data);
   }
 }
 

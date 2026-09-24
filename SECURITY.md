@@ -18,3 +18,9 @@ Do not open a public issue containing a vulnerability, secret, or user data. Sha
 Only Electron Main can read the encrypted credential vault. Credential values are accepted by the validated provider-configuration RPC and are cleared from renderer form state after submission; only authentication state, validation time, and a short fingerprint return. Provider HTTP failures are mapped to bounded sanitized errors without response bodies. Cloud endpoints require HTTPS, local endpoints require loopback addresses, and URLs containing credentials, query strings, or fragments are rejected.
 
 `LOCAL_ONLY` removes cloud providers before dispatch, so chat data cannot reach a cloud adapter under that mode. Fallback is opt-in and constrained by policy; local-to-cloud switching is never silent. Provider/model output and structured tool-call data remain untrusted data and SET 3 never executes tool calls. Plugin execution and arbitrary user-file access remain unavailable.
+
+## SET 7 permission boundary
+
+The central Permission Engine denies undeclared capabilities and non-exact grants. Matching includes capability, actor, requester type and identity, exact target and scope, Mission, session, expiry, and constraints. Provider credential changes are CRITICAL and require explicit one-time approval for each operation.
+
+One-time grants are transactionally consumed, session grants are memory-only, and persistent grants remain visible and revocable. CRITICAL requests never permit persistent approval. External documents, webpages, model output, and plugins cannot create or resolve grants. Permission audit stores a SHA-256 target fingerprint and bounded metadata keys rather than raw targets, prompts, or secret-bearing values.

@@ -10,6 +10,7 @@ import {
 } from '@jupiter/contracts';
 import { JupiterCore, type DomainEventListener } from '@jupiter/core';
 import { JupiterDatabase } from '@jupiter/database';
+import { CapabilityPermissionEngine } from '@jupiter/security';
 import { ProviderAgnosticChatRuntime } from '@jupiter/ai-runtime';
 import { DurableMissionRuntime, type MissionRuntimeDependencies } from '@jupiter/mission-runtime';
 import {
@@ -30,6 +31,7 @@ export class DesktopCoreRuntime {
   readonly #core: JupiterCore;
   readonly #workflowRuntime: DurableWorkflowRuntime;
   readonly #skillRuntime: ExecutableSkillRegistry;
+  readonly #permissionRuntime: CapabilityPermissionEngine;
   #closed = false;
 
   constructor(options: DesktopCoreRuntimeOptions) {
@@ -60,10 +62,21 @@ export class DesktopCoreRuntime {
     const skillEventBridge: {
       publish?: DurableWorkflowRuntimeDependencies['recordEvent'];
     } = {};
+    this.#permissionRuntime = new CapabilityPermissionEngine({ repository: this.#database });
+    this.#permissionRuntime.registerCapability({
+      capability: 'credentials.modify',
+      name: 'Modify credentials',
+      description: 'Add, replace, or remove provider authentication and endpoint settings.',
+      risk: 'CRITICAL',
+      allowedRequesterTypes: ['CORE', 'UI'],
+      automationAllowed: false,
+      available: true,
+    });
     this.#skillRuntime = new ExecutableSkillRegistry({
       repository: this.#database,
       runtimeVersion: options.version,
       recordEvent: (event) => skillEventBridge.publish?.(event),
+      permissionRuntime: this.#permissionRuntime,
     });
     for (const skill of createInternalSkills(options.version, () =>
       this.#skillRuntime.search({ query: '' }),
@@ -89,6 +102,7 @@ export class DesktopCoreRuntime {
       missionRuntime,
       workflowRuntime: this.#workflowRuntime,
       skillRuntime: this.#skillRuntime,
+      permissionRuntime: this.#permissionRuntime,
     });
     missionEventBridge.publish = (event) =>
       this.#core.publishRuntimeEvent(event, 'mission-runtime');
@@ -108,6 +122,7 @@ export class DesktopCoreRuntime {
         'missions.manage',
         'workflows.manage',
         'skills.manage',
+        'permissions.manage',
       ],
       start: () => {
         if (options.forceServiceFailure === true) {

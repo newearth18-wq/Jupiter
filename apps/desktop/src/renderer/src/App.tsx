@@ -31,6 +31,7 @@ import { MissionScreen } from './mission-screen.js';
 import { ModelsScreen } from './models-screen.js';
 import { SkillCenter } from './skill-center.js';
 import { windowsNotificationBridge } from './notification-bridge.js';
+import { PermissionCenterDialog } from './permission-center-dialog.js';
 
 type DialogName = 'permission' | 'identity' | undefined;
 
@@ -349,15 +350,11 @@ export function App(): React.JSX.Element {
         />
       </main>
       <ToastRegion label={t('toastRegion')} messages={toasts} />
-      <Dialog
-        closeLabel={t('close')}
-        description={t('permissionDescription')}
+      <PermissionCenterDialog
+        language={preferences.language}
         open={dialog === 'permission'}
-        title={t('permissionTitle')}
         onClose={() => setDialog(undefined)}
-      >
-        <p>{t('permissionBody')}</p>
-      </Dialog>
+      />
       <Dialog
         closeLabel={t('close')}
         description={t('identityDescription')}
@@ -419,7 +416,8 @@ function Screen({
   if (view === 'chat') return <ChatScreen t={t} />;
   if (view === 'missions') return <MissionScreen language={preferences.language} />;
   if (view === 'skills') return <SkillCenter language={preferences.language} />;
-  if (view === 'models') return <ModelsScreen t={t} />;
+  if (view === 'models')
+    return <ModelsScreen t={t} onPermissionRequired={() => onDialog('permission')} />;
   if (view === 'diagnostics') {
     return (
       <DiagnosticsScreen
@@ -607,14 +605,14 @@ function SafetySettings({
       <div className="interface-list">
         <div>
           <span>{t('permissionInterface')}</span>
-          <StatusBadge tone="warning">{t('unavailable')}</StatusBadge>
+          <StatusBadge tone="success">{t('operational')}</StatusBadge>
           <Button
             data-testid="permission-details"
             type="button"
             variant="secondary"
             onClick={() => onDialog('permission')}
           >
-            {t('viewAvailability')}
+            {t('permissionInterface')}
           </Button>
         </div>
         <div>

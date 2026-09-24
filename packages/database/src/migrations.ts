@@ -404,6 +404,74 @@ export const MIGRATIONS: readonly Migration[] = [
       CREATE INDEX skill_executions_idempotency_idx ON skill_executions (skill_id, idempotency_key, started_at);
     `,
   },
+  {
+    version: 7,
+    name: 'central_permission_engine',
+    sql: `
+      CREATE TABLE permission_requests (
+        request_id TEXT PRIMARY KEY,
+        capability TEXT NOT NULL,
+        status TEXT NOT NULL,
+        risk TEXT NOT NULL,
+        actor TEXT NOT NULL,
+        requester_type TEXT NOT NULL,
+        requester_id TEXT NOT NULL,
+        target_id TEXT NOT NULL,
+        scope_id TEXT NOT NULL,
+        mission_id TEXT,
+        session_id TEXT NOT NULL,
+        request_json TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        resolved_at TEXT
+      ) STRICT;
+
+      CREATE TABLE permission_grants (
+        grant_id TEXT PRIMARY KEY,
+        request_id TEXT NOT NULL,
+        capability TEXT NOT NULL,
+        decision TEXT NOT NULL,
+        actor TEXT NOT NULL,
+        requester_type TEXT NOT NULL,
+        requester_id TEXT NOT NULL,
+        target_id TEXT NOT NULL,
+        scope_id TEXT NOT NULL,
+        mission_id TEXT,
+        expires_at TEXT,
+        remaining_uses INTEGER,
+        revoked_at TEXT,
+        grant_json TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        FOREIGN KEY (request_id) REFERENCES permission_requests(request_id)
+      ) STRICT;
+
+      CREATE TABLE permission_audit (
+        audit_id TEXT PRIMARY KEY,
+        event_type TEXT NOT NULL,
+        capability TEXT NOT NULL,
+        actor TEXT NOT NULL,
+        requester_type TEXT NOT NULL,
+        requester_id TEXT NOT NULL,
+        decision TEXT NOT NULL,
+        reason_code TEXT NOT NULL,
+        risk TEXT NOT NULL,
+        target_fingerprint TEXT NOT NULL,
+        mission_id TEXT,
+        request_id TEXT,
+        grant_id TEXT,
+        metadata_redacted_json TEXT NOT NULL,
+        timestamp TEXT NOT NULL
+      ) STRICT;
+
+      CREATE INDEX permission_requests_status_idx ON permission_requests (status, created_at);
+      CREATE INDEX permission_requests_match_idx ON permission_requests (
+        capability, actor, requester_type, requester_id, target_id, scope_id, status
+      );
+      CREATE INDEX permission_grants_match_idx ON permission_grants (
+        capability, actor, requester_type, requester_id, target_id, scope_id
+      );
+      CREATE INDEX permission_audit_time_idx ON permission_audit (timestamp, audit_id);
+    `,
+  },
 ] as const;
 
 export const CURRENT_SCHEMA_VERSION = MIGRATIONS.at(-1)?.version ?? 0;

@@ -19,6 +19,7 @@ import {
   type SkillExecutable,
   type SkillRepository,
   type SkillRuntime,
+  type PermissionRuntime,
   type WorkflowStepExecutor,
 } from '@jupiter/core';
 
@@ -32,6 +33,7 @@ export type SkillRegistryDependencies = {
     payload: Readonly<Record<string, unknown>>;
     occurredAt: string;
   }) => void;
+  permissionRuntime?: PermissionRuntime;
 };
 
 export class ExecutableSkillRegistry implements SkillRuntime {
@@ -39,6 +41,7 @@ export class ExecutableSkillRegistry implements SkillRuntime {
   readonly #runtimeVersion: string;
   readonly #now: () => Date;
   readonly #recordEvent: SkillRegistryDependencies['recordEvent'];
+  readonly #permissionRuntime: PermissionRuntime | undefined;
   readonly #executables = new Map<string, SkillExecutable>();
   readonly #active = new Map<string, AbortController>();
 
@@ -47,6 +50,7 @@ export class ExecutableSkillRegistry implements SkillRuntime {
     this.#runtimeVersion = dependencies.runtimeVersion;
     this.#now = dependencies.now ?? (() => new Date());
     this.#recordEvent = dependencies.recordEvent;
+    this.#permissionRuntime = dependencies.permissionRuntime;
   }
 
   register(skill: SkillExecutable): SkillRegistryEntry {
@@ -145,6 +149,7 @@ export class ExecutableSkillRegistry implements SkillRuntime {
     const valid = SkillInvocationSchema.parse(invocation);
     const entry = requiredEntry(this.#latestEntry(valid.skillId));
     this.#assertInvocable(entry, valid);
+    this.#assertPermissionAuthorized(entry, valid);
     const executable = this.#executables.get(
       versionKey(entry.definition.skillId, entry.definition.version),
     );
@@ -305,6 +310,35 @@ export class ExecutableSkillRegistry implements SkillRuntime {
         'SKILL_PERMISSION_DENIED',
         'Invocation permissions do not match the Skill declaration.',
       );
+  }
+
+  #assertPermissionAuthorized(entry: SkillRegistryEntry, invocation: SkillInvocation): void {
+    if (entry.definition.permissions.length === 0) return;
+    if (!this.#permissionRuntime) {
+      throw skillError('SKILL_PERMISSION_DENIED', 'Permission Engine is unavailable.');
+    }
+    for (const capability of entry.definition.permissions) {
+      const result = this.#permissionRuntime.authorize({
+        capability,
+        actor: 'service',
+        requesterType: 'SKILL',
+        requesterId: entry.definition.skillId,
+        declaredCapabilities: entry.definition.permissions,
+        targetId: `skill:${entry.definition.skillId}`,
+        scopeId: `mission:${invocation.missionId}`,
+        missionId: invocation.missionId,
+        constraints: { skillVersion: entry.definition.version },
+        automated: false,
+      });
+      if (result.status !== 'ALLOWED') {
+        throw skillError(
+          'SKILL_PERMISSION_DENIED',
+          result.status === 'PROMPT'
+            ? 'Skill requires explicit permission before execution.'
+            : 'Permission policy denied Skill execution.',
+        );
+      }
+    }
   }
 
   #toggle(skillId: string, enabled: boolean): SkillRegistryEntry {

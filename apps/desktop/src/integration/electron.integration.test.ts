@@ -74,10 +74,24 @@ type SmokeEvidence = {
       healthVisible: boolean;
       safeTestVisible: boolean;
     };
+    permission: {
+      centerVisible: boolean;
+      requestVisible: boolean;
+      criticalVisible: boolean;
+      exactTargetVisible: boolean;
+      allowOnceVisible: boolean;
+      alwaysAllowVisible: boolean;
+      denyVisible: boolean;
+    };
   };
   ai: {
     status?: string;
     configureStatus?: string;
+    firstConfigureStatus?: string;
+    firstConfigureCode?: string | null;
+    permissionRequestFound?: boolean;
+    criticalAlwaysAllowOffered?: boolean | null;
+    permissionResolutionStatus?: string;
     credentialReturned?: boolean;
     streamedDeltas?: string[];
     uiStreamSnapshots?: string[];
@@ -121,6 +135,7 @@ type SmokeEvidence = {
     workflowStatus: string | null;
     stepOutput: string | null;
   };
+  permissionFixture?: { status: string };
   persistedWindowState: { width: number; height: number; maximized: boolean };
   webPreferences: {
     contextIsolation: boolean;
@@ -222,7 +237,7 @@ describe('packaged-shape Electron shell', () => {
     expect(evidence.renderer.diagnostics.status).toBe('success');
     expect(evidence.renderer.diagnostics.data?.database).toMatchObject({
       status: 'operational',
-      schemaVersion: 6,
+      schemaVersion: 7,
       integrity: 'ok',
     });
     expect(evidence.renderer.denied.status).toBe('error');
@@ -254,6 +269,16 @@ describe('packaged-shape Electron shell', () => {
       centerVisible: true,
       healthVisible: true,
       safeTestVisible: true,
+    });
+    expect(evidence.permissionFixture?.status).toBe('success');
+    expect(evidence.renderer.permission).toEqual({
+      centerVisible: true,
+      requestVisible: true,
+      criticalVisible: true,
+      exactTargetVisible: true,
+      allowOnceVisible: true,
+      alwaysAllowVisible: false,
+      denyVisible: true,
     });
     expect(evidence.renderer.eventCursor).toBeGreaterThan(0);
     expect(evidence.skillWorkflow).toEqual({
@@ -329,6 +354,11 @@ describe('packaged-shape Electron shell', () => {
     const evidence = await runElectron({ aiSmoke: true });
     expect(evidence.ai).toMatchObject({
       configureStatus: 'success',
+      firstConfigureStatus: 'error',
+      firstConfigureCode: 'PERMISSION_REQUIRED',
+      permissionRequestFound: true,
+      criticalAlwaysAllowOffered: false,
+      permissionResolutionStatus: 'success',
       credentialReturned: false,
       streamedDeltas: ['Hello ', 'Jupiter'],
       uiStreamSnapshots: ['Hello ', 'Hello Jupiter'],

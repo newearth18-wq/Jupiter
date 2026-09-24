@@ -243,6 +243,55 @@ async function writeSmokeEvidence(window: BrowserWindow): Promise<void> {
   const evidencePath = process.env.JUPITER_SMOKE_EVIDENCE_PATH;
   if (!evidencePath) throw new Error('JUPITER_SMOKE_EVIDENCE_PATH is required in smoke mode.');
 
+  let permissionFixture: unknown;
+  if (coreRuntime) {
+    permissionFixture = await coreRuntime.request(
+      {
+        schemaVersion: 1,
+        kind: 'command',
+        name: 'permissions.request',
+        context: {
+          requestId: randomUUID(),
+          actor: 'test',
+          timestamp: new Date().toISOString(),
+        },
+        payload: {
+          capability: 'credentials.modify',
+          action: 'Replace a smoke-test provider credential.',
+          reason: 'Verify the real critical permission interface.',
+          target: {
+            type: 'provider',
+            id: 'provider:permission-smoke',
+            display: 'Permission smoke provider',
+          },
+          scope: {
+            type: 'credential',
+            id: 'provider-credentials',
+            display: 'Provider credential only',
+          },
+          requester: {
+            actor: 'test',
+            type: 'UI',
+            id: 'models-screen',
+            display: 'AI Models settings',
+            declaredCapabilities: ['credentials.modify'],
+          },
+          trustSource: 'USER_INTENT',
+          dataLeavingDevice: {
+            value: true,
+            description: 'The credential would go only to the exact configured endpoint.',
+          },
+          consequence: 'Provider authentication would change.',
+          reversible: true,
+          automated: false,
+          constraints: { operation: 'configure' },
+        },
+      },
+      'test',
+      new AbortController().signal,
+    );
+  }
+
   const renderer: unknown = await window.webContents.executeJavaScript(`
     new Promise((resolve) => {
       const started = Date.now();
@@ -500,8 +549,23 @@ async function writeSmokeEvidence(window: BrowserWindow): Promise<void> {
             permissionTrigger.focus();
             permissionTrigger.click();
           }
-          await wait(60);
+          const permissionStarted = Date.now();
+          while (
+            document.querySelector('[data-testid="permission-request-detail"]') === null &&
+            Date.now() - permissionStarted < 3000
+          ) {
+            await wait(25);
+          }
           const dialog = document.querySelector('[role="dialog"]');
+          const permission = {
+            centerVisible: document.querySelector('[data-testid="permission-center"]') !== null,
+            requestVisible: document.querySelector('[data-testid="permission-request-detail"]') !== null,
+            criticalVisible: document.querySelector('[data-testid="permission-request-detail"]')?.textContent?.includes('CRITICAL') ?? false,
+            exactTargetVisible: document.querySelector('[data-testid="permission-request-detail"]')?.textContent?.includes('provider:permission-smoke') ?? false,
+            allowOnceVisible: document.querySelector('[data-decision="ALLOW_ONCE"]') !== null,
+            alwaysAllowVisible: document.querySelector('[data-decision="ALWAYS_ALLOW"]') !== null,
+            denyVisible: document.querySelector('[data-decision="DENY"]') !== null
+          };
           const dialogButton = dialog?.querySelector('button');
           if (dialogButton instanceof HTMLElement) dialogButton.focus();
           document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', bubbles: true }));
@@ -559,6 +623,7 @@ async function writeSmokeEvidence(window: BrowserWindow): Promise<void> {
             mission,
             workflow,
             skill,
+            permission,
             invalidRejected,
             eventCursor,
             screens,
@@ -590,7 +655,7 @@ async function writeSmokeEvidence(window: BrowserWindow): Promise<void> {
             actor: 'renderer',
             timestamp: new Date().toISOString()
           });
-          const configure = await window.jupiter.request({
+          const firstConfigure = await window.jupiter.request({
             schemaVersion: 1,
             kind: 'command',
             name: 'providers.configure',
@@ -606,6 +671,46 @@ async function writeSmokeEvidence(window: BrowserWindow): Promise<void> {
               credential
             }
           });
+          const permissionRequests = await window.jupiter.request({
+            schemaVersion: 1,
+            kind: 'query',
+            name: 'permissions.requests',
+            context: makeContext(),
+            payload: { status: 'PENDING' }
+          });
+          const providerPermission = permissionRequests.status === 'success'
+            ? permissionRequests.data.requests.find((request) =>
+                request.target.id === 'provider:fixture-provider' &&
+                request.requester.actor === 'renderer'
+              )
+            : undefined;
+          const permissionResolution = providerPermission
+            ? await window.jupiter.request({
+                schemaVersion: 1,
+                kind: 'command',
+                name: 'permissions.resolve',
+                context: makeContext(),
+                payload: { requestId: providerPermission.requestId, decision: 'ALLOW_ONCE' }
+              })
+            : { status: 'skipped' };
+          const configure = permissionResolution.status === 'success'
+            ? await window.jupiter.request({
+                schemaVersion: 1,
+                kind: 'command',
+                name: 'providers.configure',
+                context: makeContext(),
+                payload: {
+                  providerId: 'fixture-provider',
+                  displayName: 'Fixture Provider',
+                  baseUrl,
+                  locality: 'local',
+                  authScheme: 'bearer',
+                  enabled: true,
+                  capabilities: ['chat', 'streaming', 'cancellation', 'usage'],
+                  credential
+                }
+              })
+            : { status: 'skipped' };
           const conversationResponse = await window.jupiter.request({
             schemaVersion: 1,
             kind: 'command',
@@ -727,6 +832,11 @@ async function writeSmokeEvidence(window: BrowserWindow): Promise<void> {
           ].filter(Boolean).join(' ');
           return {
             configureStatus: configure.status,
+            firstConfigureStatus: firstConfigure.status,
+            firstConfigureCode: firstConfigure.status === 'error' ? firstConfigure.error.code : null,
+            permissionRequestFound: Boolean(providerPermission),
+            criticalAlwaysAllowOffered: providerPermission?.availableDecisions.includes('ALWAYS_ALLOW') ?? null,
+            permissionResolutionStatus: permissionResolution.status,
             credentialReturned: JSON.stringify(configure).includes(credential),
             streamedDeltas: deltas,
             uiStreamSnapshots,
@@ -984,6 +1094,7 @@ async function writeSmokeEvidence(window: BrowserWindow): Promise<void> {
     responsive,
     keyboardNavigation,
     skillWorkflow,
+    permissionFixture,
     persistedWindowState: coreRuntime?.getWindowState(),
     webPreferences: {
       contextIsolation: secureWebPreferences.contextIsolation,
