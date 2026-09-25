@@ -33,6 +33,7 @@ import { SkillCenter } from './skill-center.js';
 import { windowsNotificationBridge } from './notification-bridge.js';
 import { PermissionCenterDialog } from './permission-center-dialog.js';
 import { ComputerAgentScreen } from './computer-agent-screen.js';
+import jupiterCoreArtwork from './assets/jupiter-command-core.png';
 
 type DialogName = 'permission' | 'identity' | undefined;
 
@@ -464,20 +465,53 @@ function CommandCenter({
   runtimeStatus: 'operational' | 'degraded' | 'offline';
   t: Translator;
 }): React.JSX.Element {
+  const shortcuts: readonly { id: ScreenId; label: CopyKey; icon: string }[] = [
+    { id: 'chat', label: 'chat', icon: 'chat' },
+    { id: 'missions', label: 'missions', icon: 'mission' },
+    { id: 'skills', label: 'skills', icon: 'skill' },
+    { id: 'devices', label: 'devices', icon: 'device' },
+  ];
+
   return (
     <div className="screen command-center" data-screen="home">
-      <ScreenHeader
-        eyebrow={t('homeEyebrow')}
-        title={t('homeTitle')}
-        description={t('homeDescription')}
-      />
-      <div className="command-grid">
-        <Surface className="jupiter-stage">
-          <JupiterAvatar mode={preferences.avatarMode} status={runtimeStatus} />
+      <Surface className="command-hero">
+        <div className="command-hero__topline">
+          <div className="command-hero__brand" aria-label="Jupiter">
+            <span className="command-hero__brand-mark" aria-hidden="true" />
+            <span>JUPITER</span>
+          </div>
           <StatusBadge tone={runtimeTone(runtimeStatus)}>
             {statusLabel(runtimeStatus, t)}
           </StatusBadge>
-        </Surface>
+        </div>
+
+        <div className="command-hero__main">
+          <div className="jupiter-stage">
+            <JupiterAvatar mode={preferences.avatarMode} status={runtimeStatus} />
+          </div>
+          <header className="command-hero__intro">
+            <span className="j-eyebrow">{t('homeEyebrow')}</span>
+            <h1 data-testid="screen-title">{t('homeTitle')}</h1>
+            <p>{t('homeDescription')}</p>
+          </header>
+        </div>
+
+        <nav className="command-shortcuts" aria-label={t('primaryNavigation')}>
+          {shortcuts.map((shortcut) => (
+            <a key={shortcut.id} href={`#/${shortcut.id}`}>
+              <NavIcon name={shortcut.icon} />
+              <strong>{t(shortcut.label)}</strong>
+              <span className="command-shortcut__arrow" aria-hidden="true">
+                ↗
+              </span>
+            </a>
+          ))}
+        </nav>
+
+        <ChatComposer t={t} />
+      </Surface>
+
+      <div className="command-operations">
         <MissionCard
           eventVersion={
             events.filter((event) => event.type.startsWith('mission.')).at(-1)?.sequence
@@ -485,9 +519,8 @@ function CommandCenter({
           language={preferences.language}
           t={t}
         />
+        <ActivityTimeline events={events} language={preferences.language} t={t} />
       </div>
-      <ActivityTimeline events={events} language={preferences.language} t={t} />
-      <ChatComposer t={t} />
     </div>
   );
 }
@@ -668,12 +701,10 @@ function JupiterAvatar({
       data-status={status}
       data-testid="jupiter-avatar"
     >
+      <span className="avatar-aura" />
+      <img className="avatar-artwork" src={jupiterCoreArtwork} alt="" />
       <span className="avatar-orbit avatar-orbit--one" />
       <span className="avatar-orbit avatar-orbit--two" />
-      <span className="avatar-core">
-        <span className="avatar-eye avatar-eye--left" />
-        <span className="avatar-eye avatar-eye--right" />
-      </span>
       <span className="avatar-particle avatar-particle--one" />
       <span className="avatar-particle avatar-particle--two" />
     </div>
