@@ -24,3 +24,9 @@ Only Electron Main can read the encrypted credential vault. Credential values ar
 The central Permission Engine denies undeclared capabilities and non-exact grants. Matching includes capability, actor, requester type and identity, exact target and scope, Mission, session, expiry, and constraints. Provider credential changes are CRITICAL and require explicit one-time approval for each operation.
 
 One-time grants are transactionally consumed, session grants are memory-only, and persistent grants remain visible and revocable. CRITICAL requests never permit persistent approval. External documents, webpages, model output, and plugins cannot create or resolve grants. Permission audit stores a SHA-256 target fingerprint and bounded metadata keys rather than raw targets, prompts, or secret-bearing values.
+
+## SET 10 file and artifact boundary
+
+Local files are reachable only from the managed workspace or an explicit user-approved real directory. The File Runtime rejects absolute input paths, parent traversal, symlinks, junctions, resolved scope escapes, unsupported formats, oversized parser inputs, and implicit destination overwrite. Document contents are untrusted data and cannot request or resolve permissions.
+
+File writes, root approval, artifact generation, Open/Reveal, and Delete use central typed capabilities. Delete is CRITICAL and always requires a fresh exact-target decision; it uses the Electron host Recycle Bin operation. Generated files are published atomically, structurally verified, hashed with SHA-256, and linked to their Mission only after verification. Metadata does not contain extracted document text. User-selected outputs are never removed by managed cleanup.

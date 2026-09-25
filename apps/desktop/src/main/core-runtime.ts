@@ -20,6 +20,8 @@ import {
 import { createInternalSkills, ExecutableSkillRegistry } from '@jupiter/skill-runtime';
 import { PowerShellAutomationProcessHost, WindowsComputerAgent } from '@jupiter/agent-runtime';
 import { PlaywrightBrowserAgent, PlaywrightBrowserProcessHost } from '@jupiter/browser-runtime';
+import { ManagedFileArtifactRuntime } from '@jupiter/file-runtime';
+import { clipboard, shell } from 'electron';
 import { DpapiCredentialVault } from './dpapi-credential-vault.js';
 
 export type DesktopCoreRuntimeOptions = {
@@ -32,6 +34,8 @@ export type DesktopCoreRuntimeOptions = {
   browserExecutablePath?: string;
   browserProfileRoot: string;
   browserDownloadDirectory: string;
+  artifactWorkspace: string;
+  pdfFontPath?: string;
 };
 
 export class DesktopCoreRuntime {
@@ -42,6 +46,7 @@ export class DesktopCoreRuntime {
   readonly #permissionRuntime: CapabilityPermissionEngine;
   readonly #computerRuntime: WindowsComputerAgent;
   readonly #browserRuntime: PlaywrightBrowserAgent;
+  readonly #fileArtifactRuntime: ManagedFileArtifactRuntime;
   #closed = false;
 
   constructor(options: DesktopCoreRuntimeOptions) {
@@ -99,6 +104,22 @@ export class DesktopCoreRuntime {
       ...(options.browserExecutablePath ? { executablePath: options.browserExecutablePath } : {}),
       managedDownloadDirectory: options.browserDownloadDirectory,
     });
+    this.#fileArtifactRuntime = new ManagedFileArtifactRuntime({
+      repository: this.#database,
+      permissions: this.#permissionRuntime,
+      managedWorkspace: options.artifactWorkspace,
+      host: {
+        openPath: (path) => shell.openPath(path),
+        revealPath: (path) => {
+          shell.showItemInFolder(path);
+        },
+        copyPath: (path) => {
+          void clipboard.writeText(path);
+        },
+        deletePath: (path) => shell.trashItem(path),
+      },
+      ...(options.pdfFontPath ? { writerOptions: { pdfFontPath: options.pdfFontPath } } : {}),
+    });
     this.#skillRuntime = new ExecutableSkillRegistry({
       repository: this.#database,
       runtimeVersion: options.version,
@@ -132,6 +153,7 @@ export class DesktopCoreRuntime {
       permissionRuntime: this.#permissionRuntime,
       computerRuntime: this.#computerRuntime,
       browserRuntime: this.#browserRuntime,
+      fileArtifactRuntime: this.#fileArtifactRuntime,
     });
     missionEventBridge.publish = (event) =>
       this.#core.publishRuntimeEvent(event, 'mission-runtime');
@@ -154,6 +176,8 @@ export class DesktopCoreRuntime {
         'permissions.manage',
         'computer.manage',
         'browser.manage',
+        'files.manage',
+        'artifacts.manage',
       ],
       start: () => {
         if (options.forceServiceFailure === true) {

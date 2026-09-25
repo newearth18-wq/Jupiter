@@ -73,6 +73,20 @@ import type {
   BrowserCancelInput,
   BrowserRuntimeStatus,
   BrowserSession,
+  ApprovedFileRoot,
+  ManagedArtifact,
+  FileRuntimeStatus,
+  FileFindInput,
+  FileFindResult,
+  DocumentReadInput,
+  DocumentReadResult,
+  FileRootApproveInput,
+  FileMutationInput,
+  FileMutationResult,
+  ArtifactListInput,
+  ArtifactGenerateInput,
+  ArtifactActionInput,
+  ArtifactActionResult,
 } from '@jupiter/contracts';
 
 export type DomainEventDraft = {
@@ -384,5 +398,31 @@ export type BrowserRuntime = {
     signal: AbortSignal,
   ) => Promise<BrowserActionResult>;
   cancel: (input: BrowserCancelInput) => boolean;
+  shutdown: () => Promise<void>;
+};
+
+export type ArtifactRepository = {
+  upsertApprovedFileRoot: (root: ApprovedFileRoot) => void;
+  getApprovedFileRoot: (rootId: string) => ApprovedFileRoot | undefined;
+  listApprovedFileRoots: () => ApprovedFileRoot[];
+  upsertManagedArtifact: (artifact: ManagedArtifact) => void;
+  getManagedArtifact: (artifactId: string) => ManagedArtifact | undefined;
+  listManagedArtifacts: (input: ArtifactListInput) => ManagedArtifact[];
+};
+
+export type FileArtifactRuntime = {
+  status: () => FileRuntimeStatus;
+  roots: () => ApprovedFileRoot[];
+  approveRoot: (input: FileRootApproveInput, actor: Actor) => ApprovedFileRoot;
+  find: (input: FileFindInput) => Promise<FileFindResult>;
+  read: (input: DocumentReadInput, signal: AbortSignal) => Promise<DocumentReadResult>;
+  mutate: (input: FileMutationInput, actor: Actor) => Promise<FileMutationResult>;
+  artifacts: (input: ArtifactListInput) => ManagedArtifact[];
+  generate: (
+    input: ArtifactGenerateInput,
+    actor: Actor,
+    signal: AbortSignal,
+  ) => Promise<ManagedArtifact>;
+  act: (input: ArtifactActionInput, actor: Actor) => Promise<ArtifactActionResult>;
   shutdown: () => Promise<void>;
 };

@@ -34,6 +34,7 @@ import { windowsNotificationBridge } from './notification-bridge.js';
 import { PermissionCenterDialog } from './permission-center-dialog.js';
 import { ComputerAgentScreen } from './computer-agent-screen.js';
 import jupiterCoreArtwork from './assets/jupiter-command-core.png';
+import { FileScreen } from './file-screen.js';
 
 type DialogName = 'permission' | 'identity' | undefined;
 
@@ -58,11 +59,6 @@ const DEFERRED_SCREENS: Readonly<
   memory: {
     title: 'memoryTitle',
     description: 'memoryDescription',
-    availability: 'unavailable',
-  },
-  files: {
-    title: 'filesTitle',
-    description: 'filesDescription',
     availability: 'unavailable',
   },
   automations: {
@@ -413,6 +409,13 @@ function Screen({
   if (view === 'chat') return <ChatScreen t={t} />;
   if (view === 'missions') return <MissionScreen language={preferences.language} />;
   if (view === 'skills') return <SkillCenter language={preferences.language} />;
+  if (view === 'files')
+    return (
+      <FileScreen
+        language={preferences.language}
+        onPermissionRequired={() => onDialog('permission')}
+      />
+    );
   if (view === 'models')
     return <ModelsScreen t={t} onPermissionRequired={() => onDialog('permission')} />;
   if (view === 'devices')

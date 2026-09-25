@@ -520,6 +520,46 @@ export const MIGRATIONS: readonly Migration[] = [
         ON browser_actions (session_id, started_at DESC);
     `,
   },
+  {
+    version: 10,
+    name: 'file_document_and_artifact_system',
+    sql: `
+      CREATE TABLE approved_file_roots (
+        root_id TEXT PRIMARY KEY,
+        display_name TEXT NOT NULL,
+        path TEXT NOT NULL UNIQUE,
+        writable INTEGER NOT NULL CHECK (writable IN (0, 1)),
+        managed INTEGER NOT NULL CHECK (managed IN (0, 1)),
+        approved_at TEXT NOT NULL
+      ) STRICT;
+
+      CREATE TABLE managed_artifacts (
+        artifact_id TEXT PRIMARY KEY,
+        mission_id TEXT NOT NULL,
+        name TEXT NOT NULL,
+        type TEXT NOT NULL,
+        path TEXT NOT NULL UNIQUE,
+        created_at TEXT NOT NULL,
+        source_json TEXT NOT NULL,
+        size INTEGER NOT NULL CHECK (size >= 0),
+        hash TEXT NOT NULL,
+        verification_status TEXT NOT NULL,
+        verification_details TEXT NOT NULL,
+        creating_step_id TEXT,
+        version INTEGER NOT NULL CHECK (version > 0),
+        parent_artifact_id TEXT,
+        user_selected_output INTEGER NOT NULL CHECK (user_selected_output IN (0, 1)),
+        deleted_at TEXT,
+        FOREIGN KEY (mission_id) REFERENCES missions(mission_id) ON DELETE RESTRICT,
+        FOREIGN KEY (parent_artifact_id) REFERENCES managed_artifacts(artifact_id)
+      ) STRICT;
+
+      CREATE INDEX managed_artifacts_mission_idx
+        ON managed_artifacts (mission_id, created_at DESC, artifact_id DESC);
+      CREATE INDEX managed_artifacts_active_idx
+        ON managed_artifacts (deleted_at, created_at DESC);
+    `,
+  },
 ] as const;
 
 export const CURRENT_SCHEMA_VERSION = MIGRATIONS.at(-1)?.version ?? 0;

@@ -88,6 +88,23 @@ import {
   BrowserRuntimeStatusSchema,
   BrowserSessionListResultSchema,
 } from './browser.js';
+import {
+  ApprovedFileRootSchema,
+  ArtifactActionInputSchema,
+  ArtifactActionResultSchema,
+  ArtifactGenerateInputSchema,
+  ArtifactListInputSchema,
+  ArtifactListResultSchema,
+  DocumentReadInputSchema,
+  DocumentReadResultSchema,
+  FileFindInputSchema,
+  FileFindResultSchema,
+  FileMutationInputSchema,
+  FileMutationResultSchema,
+  FileRootApproveInputSchema,
+  FileRuntimeStatusSchema,
+  ManagedArtifactSchema,
+} from './artifact.js';
 
 const EmptyPayloadSchema = z.object({}).strict();
 
@@ -378,6 +395,27 @@ const BrowserCancelRequestSchema = rpcRequest(
   'browser.cancel',
   BrowserCancelInputSchema,
 );
+const FilesStatusRequestSchema = rpcRequest('query', 'files.status', EmptyPayloadSchema);
+const FileRootsRequestSchema = rpcRequest('query', 'files.roots', EmptyPayloadSchema);
+const FileRootApproveRequestSchema = rpcRequest(
+  'command',
+  'files.roots.approve',
+  FileRootApproveInputSchema,
+);
+const FilesFindRequestSchema = rpcRequest('query', 'files.find', FileFindInputSchema);
+const FilesReadRequestSchema = rpcRequest('query', 'files.read', DocumentReadInputSchema);
+const FilesMutateRequestSchema = rpcRequest('command', 'files.mutate', FileMutationInputSchema);
+const ArtifactsListRequestSchema = rpcRequest('query', 'artifacts.list', ArtifactListInputSchema);
+const ArtifactsGenerateRequestSchema = rpcRequest(
+  'command',
+  'artifacts.generate',
+  ArtifactGenerateInputSchema,
+);
+const ArtifactsActionRequestSchema = rpcRequest(
+  'command',
+  'artifacts.action',
+  ArtifactActionInputSchema,
+);
 
 export const RpcRequestEnvelopeSchema = z.discriminatedUnion('name', [
   CorePingRequestSchema,
@@ -444,6 +482,15 @@ export const RpcRequestEnvelopeSchema = z.discriminatedUnion('name', [
   BrowserHistoryRequestSchema,
   BrowserExecuteRequestSchema,
   BrowserCancelRequestSchema,
+  FilesStatusRequestSchema,
+  FileRootsRequestSchema,
+  FileRootApproveRequestSchema,
+  FilesFindRequestSchema,
+  FilesReadRequestSchema,
+  FilesMutateRequestSchema,
+  ArtifactsListRequestSchema,
+  ArtifactsGenerateRequestSchema,
+  ArtifactsActionRequestSchema,
 ]);
 
 export const RpcRequestNameSchema = z.enum([
@@ -511,6 +558,15 @@ export const RpcRequestNameSchema = z.enum([
   'browser.history',
   'browser.execute',
   'browser.cancel',
+  'files.status',
+  'files.roots',
+  'files.roots.approve',
+  'files.find',
+  'files.read',
+  'files.mutate',
+  'artifacts.list',
+  'artifacts.generate',
+  'artifacts.action',
 ]);
 
 export const RpcSuccessEnvelopeSchema = z
@@ -673,6 +729,27 @@ export function parseRpcSuccessData(
       return BrowserActionResultSchema.parse(data);
     case 'browser.cancel':
       return BrowserCancelResultSchema.parse(data);
+    case 'files.status':
+      return FileRuntimeStatusSchema.parse(data);
+    case 'files.roots':
+      return z
+        .object({ roots: z.array(ApprovedFileRootSchema) })
+        .strict()
+        .parse(data);
+    case 'files.roots.approve':
+      return ApprovedFileRootSchema.parse(data);
+    case 'files.find':
+      return FileFindResultSchema.parse(data);
+    case 'files.read':
+      return DocumentReadResultSchema.parse(data);
+    case 'files.mutate':
+      return FileMutationResultSchema.parse(data);
+    case 'artifacts.list':
+      return ArtifactListResultSchema.parse(data);
+    case 'artifacts.generate':
+      return ManagedArtifactSchema.parse(data);
+    case 'artifacts.action':
+      return ArtifactActionResultSchema.parse(data);
   }
 }
 

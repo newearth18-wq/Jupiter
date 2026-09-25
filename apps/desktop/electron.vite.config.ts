@@ -21,6 +21,9 @@ const aliases = {
   '@jupiter/browser-runtime': fileURLToPath(
     new URL('../../services/browser-runtime/src/index.ts', import.meta.url),
   ),
+  '@jupiter/file-runtime': fileURLToPath(
+    new URL('../../services/file-runtime/src/index.ts', import.meta.url),
+  ),
   '@jupiter/security': fileURLToPath(
     new URL('../../packages/security/src/index.ts', import.meta.url),
   ),

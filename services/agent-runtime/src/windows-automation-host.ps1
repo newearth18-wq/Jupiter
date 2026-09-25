@@ -5,6 +5,7 @@ $null = Add-Type -AssemblyName UIAutomationClient
 $null = Add-Type -AssemblyName UIAutomationTypes
 $null = Add-Type -AssemblyName System.Drawing
 $null = Add-Type -AssemblyName System.Windows.Forms
+$null = Add-Type -AssemblyName Microsoft.VisualBasic
 $null = Add-Type -TypeDefinition @'
 using System;
 using System.Runtime.InteropServices;
@@ -12,6 +13,9 @@ public static class JupiterNativeUi {
   [StructLayout(LayoutKind.Sequential)] public struct RECT { public int Left; public int Top; public int Right; public int Bottom; }
   [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr hWnd);
   [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
+  [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr hWnd, IntPtr processId);
+  [DllImport("user32.dll")] public static extern bool AttachThreadInput(uint attachThread, uint attachToThread, bool attach);
+  [DllImport("user32.dll")] public static extern bool BringWindowToTop(IntPtr hWnd);
   [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr hWnd, int command);
   [DllImport("user32.dll")] public static extern bool SetWindowPos(IntPtr hWnd, IntPtr insertAfter, int x, int y, int width, int height, uint flags);
   [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr hWnd, out RECT rect);
@@ -332,7 +336,31 @@ function Invoke-Action($Action) {
     }
     'FOCUS_WINDOW' {
       $process = Get-TargetProcess $Action
-      if (-not [JupiterNativeUi]::SetForegroundWindow([IntPtr]$process.MainWindowHandle)) {
+      $targetHandle = [IntPtr]$process.MainWindowHandle
+      $deadline = [DateTime]::UtcNow.AddMilliseconds([Math]::Min([int]$Action.timeoutMs, 1500))
+      $focused = $false
+      do {
+        $foregroundHandle = [JupiterNativeUi]::GetForegroundWindow()
+        $foregroundThread = [JupiterNativeUi]::GetWindowThreadProcessId($foregroundHandle, [IntPtr]::Zero)
+        $targetThread = [JupiterNativeUi]::GetWindowThreadProcessId($targetHandle, [IntPtr]::Zero)
+        $attached = $false
+        try {
+          if ($foregroundThread -ne 0 -and $targetThread -ne 0 -and $foregroundThread -ne $targetThread) {
+            $attached = [JupiterNativeUi]::AttachThreadInput($foregroundThread, $targetThread, $true)
+          }
+          $null = [JupiterNativeUi]::ShowWindow($targetHandle, 9)
+          $null = [Microsoft.VisualBasic.Interaction]::AppActivate([int]$process.Id)
+          $null = [JupiterNativeUi]::BringWindowToTop($targetHandle)
+          $null = [JupiterNativeUi]::SetForegroundWindow($targetHandle)
+        } finally {
+          if ($attached) {
+            $null = [JupiterNativeUi]::AttachThreadInput($foregroundThread, $targetThread, $false)
+          }
+        }
+        $focused = [JupiterNativeUi]::GetForegroundWindow() -eq $targetHandle
+        if (-not $focused) { Start-Sleep -Milliseconds 75 }
+      } while (-not $focused -and [DateTime]::UtcNow -lt $deadline)
+      if (-not $focused) {
         return New-Failure 'WINDOW_FOCUS_FAILED' 'Windows did not focus the exact target window.' 'WINDOWS_API'
       }
       return New-Success 'Windows focused the exact target window.' 'WINDOWS_API' ([ordered]@{

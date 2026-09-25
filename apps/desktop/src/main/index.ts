@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import {
   BOOTSTRAP_SCHEMA_VERSION,
   BootstrapStateSchema,
@@ -29,6 +30,8 @@ const IPC = {
   domainEvent: 'jupiter:domain-event',
   chatStream: 'jupiter:chat-stream',
 } as const;
+
+const mainDirectory = dirname(fileURLToPath(import.meta.url));
 
 let mainWindow: BrowserWindow | null = null;
 let bootstrapState: BootstrapState;
@@ -159,7 +162,7 @@ async function createWindow(): Promise<void> {
       height: 42,
     },
     webPreferences: {
-      preload: join(__dirname, '../preload/index.cjs'),
+      preload: join(mainDirectory, '../preload/index.cjs'),
       ...secureWebPreferences,
     },
   });
@@ -189,7 +192,7 @@ async function createWindow(): Promise<void> {
   if (process.env.ELECTRON_RENDERER_URL) {
     await mainWindow.loadURL(process.env.ELECTRON_RENDERER_URL);
   } else {
-    await mainWindow.loadFile(join(__dirname, '../renderer/index.html'));
+    await mainWindow.loadFile(join(mainDirectory, '../renderer/index.html'));
   }
 
   if (process.env.JUPITER_SMOKE_TEST === '1') await writeSmokeEvidence(mainWindow);
@@ -385,6 +388,13 @@ async function writeSmokeEvidence(window: BrowserWindow): Promise<void> {
             context: makeContext(),
             payload: {}
           });
+          const files = await window.jupiter.request({
+            schemaVersion: 1,
+            kind: 'query',
+            name: 'files.status',
+            context: makeContext(),
+            payload: {}
+          });
           const denied = await window.jupiter.request({
             schemaVersion: 1,
             kind: 'query',
@@ -532,6 +542,15 @@ async function writeSmokeEvidence(window: BrowserWindow): Promise<void> {
                 await wait(25);
               }
             }
+            if (screenId === 'files') {
+              const filesStarted = Date.now();
+              while (
+                document.querySelector('[data-file-state]')?.getAttribute('data-file-state') === 'loading' &&
+                Date.now() - filesStarted < 3000
+              ) {
+                await wait(25);
+              }
+            }
             if (screenId === 'missions') {
               const missionDetailStarted = Date.now();
               while (
@@ -573,7 +592,8 @@ async function writeSmokeEvidence(window: BrowserWindow): Promise<void> {
               title: document.querySelector('[data-testid="screen-title"]')?.textContent ?? null,
               availability: document.querySelector('[data-testid="availability-state"]')?.getAttribute('data-availability') ?? null,
               computerState: document.querySelector('[data-computer-state]')?.getAttribute('data-computer-state') ?? null,
-              browserState: document.querySelector('[data-browser-state]')?.getAttribute('data-browser-state') ?? null
+              browserState: document.querySelector('[data-browser-state]')?.getAttribute('data-browser-state') ?? null,
+              fileState: document.querySelector('[data-file-state]')?.getAttribute('data-file-state') ?? null
             });
           }
 
@@ -698,6 +718,7 @@ async function writeSmokeEvidence(window: BrowserWindow): Promise<void> {
             ping,
             diagnostics,
             browser,
+            files,
             denied,
             mission,
             workflow,
@@ -1154,6 +1175,7 @@ async function writeSmokeEvidence(window: BrowserWindow): Promise<void> {
   const screenshotScreen = process.env.JUPITER_SMOKE_SCREENSHOT_SCREEN ?? 'home';
   if (screenshotPath && screenshotScreen !== 'devices') {
     const screenshotScreenLiteral = JSON.stringify(screenshotScreen);
+    const [originalContentWidth = 1180, originalContentHeight = 760] = window.getContentSize();
     window.setContentSize(1180, 760);
     await window.webContents.executeJavaScript(`new Promise((resolve) => {
       const targetScreen = ${screenshotScreenLiteral};
@@ -1171,6 +1193,8 @@ async function writeSmokeEvidence(window: BrowserWindow): Promise<void> {
           document.querySelector('[data-testid="skill-detail"]') !== null;
         const computerReady = targetScreen !== 'devices' ||
           !['loading', null].includes(document.querySelector('[data-computer-state]')?.getAttribute('data-computer-state') ?? null);
+        const filesReady = targetScreen !== 'files' ||
+          !['loading', null].includes(document.querySelector('[data-file-state]')?.getAttribute('data-file-state') ?? null);
         if (
           targetScreen === 'skills' && !skillsReady && !skillRefreshTriggered &&
           Date.now() - startedAt > 750
@@ -1179,7 +1203,7 @@ async function writeSmokeEvidence(window: BrowserWindow): Promise<void> {
           const refresh = document.querySelector('.skill-toolbar .j-button');
           if (refresh instanceof HTMLElement) refresh.click();
         }
-        if ((activeScreen === targetScreen && missionReady && skillsReady && computerReady) || Date.now() - startedAt >= 3000) {
+        if ((activeScreen === targetScreen && missionReady && skillsReady && computerReady && filesReady) || Date.now() - startedAt >= 3000) {
           setTimeout(resolve, 500);
           return;
         }
@@ -1190,6 +1214,8 @@ async function writeSmokeEvidence(window: BrowserWindow): Promise<void> {
     const screenshot = await window.webContents.capturePage();
     mkdirSync(dirname(screenshotPath), { recursive: true });
     writeFileSync(screenshotPath, screenshot.toPNG());
+    window.setContentSize(originalContentWidth, originalContentHeight);
+    await new Promise((resolve) => setTimeout(resolve, 350));
   }
   const evidence = {
     timestamp: new Date().toISOString(),
@@ -1271,6 +1297,7 @@ if (!hasInstanceLock) {
           ? process.env.JUPITER_DATA_DIR
           : join(app.getPath('userData'), 'data');
       const browserExecutablePath = findWindowsBrowserExecutable();
+      const pdfFontPath = join(process.env.WINDIR ?? 'C:\\Windows', 'Fonts', 'LeelawUI.ttf');
       coreRuntime = new DesktopCoreRuntime({
         dataDirectory,
         version: app.getVersion(),
@@ -1285,6 +1312,8 @@ if (!hasInstanceLock) {
         ...(browserExecutablePath ? { browserExecutablePath } : {}),
         browserProfileRoot: join(dataDirectory, 'browser-profiles'),
         browserDownloadDirectory: join(dataDirectory, 'browser-downloads'),
+        artifactWorkspace: join(dataDirectory, 'artifacts'),
+        ...(existsSync(pdfFontPath) ? { pdfFontPath } : {}),
       });
       unsubscribeCoreEvents = coreRuntime.subscribe(broadcastDomainEvent);
       unsubscribeChatEvents = coreRuntime.subscribeChat(broadcastChatStream);

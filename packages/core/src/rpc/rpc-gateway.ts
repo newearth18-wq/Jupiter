@@ -81,6 +81,15 @@ const CAPABILITIES: Readonly<Record<RpcRequestName, string>> = {
   'browser.history': 'browser.history.read',
   'browser.execute': 'browser.execute',
   'browser.cancel': 'browser.cancel',
+  'files.status': 'files.status.read',
+  'files.roots': 'files.roots.read',
+  'files.roots.approve': 'files.roots.approve',
+  'files.find': 'files.find',
+  'files.read': 'files.read',
+  'files.mutate': 'files.mutate',
+  'artifacts.list': 'artifacts.read',
+  'artifacts.generate': 'artifacts.generate',
+  'artifacts.action': 'artifacts.action',
 };
 
 export class RpcGateway {

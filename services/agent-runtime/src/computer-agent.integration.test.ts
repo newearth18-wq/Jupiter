@@ -157,6 +157,7 @@ describe.skipIf(process.platform !== 'win32')('real Windows Computer Agent', () 
 
     expect(
       [move, maximize, restore, windows, focus, active].every((result) => result.success),
+      JSON.stringify({ move, maximize, restore, windows, focus, active }, null, 2),
     ).toBe(true);
     expect(windows.output?.windows?.some((window) => window.processId === processId)).toBe(true);
     expect(active.output?.processId).toBe(processId);

@@ -34,6 +34,8 @@ import {
   WorkflowStepSchema,
   ComputerActionResultSchema,
   BrowserActionResultSchema,
+  ApprovedFileRootSchema,
+  ManagedArtifactSchema,
   type AiSettings,
   type AuditEvent,
   type CoreServiceHealth,
@@ -64,6 +66,9 @@ import {
   type WorkflowStepAttempt,
   type ComputerActionResult,
   type BrowserActionResult,
+  type ApprovedFileRoot,
+  type ManagedArtifact,
+  type ArtifactListInput,
 } from '@jupiter/contracts';
 import type {
   AiRepository,
@@ -78,6 +83,7 @@ import type {
   WorkflowRepository,
   ComputerActionRepository,
   BrowserActionRepository,
+  ArtifactRepository,
 } from '@jupiter/core';
 import { CURRENT_SCHEMA_VERSION, migrate } from './migrations.js';
 
@@ -110,7 +116,8 @@ export class JupiterDatabase
     SkillRepository,
     PermissionRepository,
     ComputerActionRepository,
-    BrowserActionRepository
+    BrowserActionRepository,
+    ArtifactRepository
 {
   readonly #database: DatabaseSync;
   readonly #filePath: string;
@@ -1551,6 +1558,98 @@ export class JupiterDatabase
     return rows.map((row) => BrowserActionResultSchema.parse(this.#parseJson(row.result_json)));
   }
 
+  upsertApprovedFileRoot(root: ApprovedFileRoot): void {
+    const valid = ApprovedFileRootSchema.parse(root);
+    this.#database
+      .prepare(
+        `INSERT INTO approved_file_roots (
+           root_id, display_name, path, writable, managed, approved_at
+         ) VALUES (?, ?, ?, ?, ?, ?)
+         ON CONFLICT(root_id) DO UPDATE SET
+           display_name = excluded.display_name, path = excluded.path,
+           writable = excluded.writable, managed = excluded.managed,
+           approved_at = excluded.approved_at`,
+      )
+      .run(
+        valid.rootId,
+        valid.displayName,
+        valid.path,
+        valid.writable ? 1 : 0,
+        valid.managed ? 1 : 0,
+        valid.approvedAt,
+      );
+  }
+
+  getApprovedFileRoot(rootId: string): ApprovedFileRoot | undefined {
+    const row = this.#database
+      .prepare('SELECT * FROM approved_file_roots WHERE root_id = ?')
+      .get(rootId) as Record<string, unknown> | undefined;
+    return row ? this.#parseApprovedFileRoot(row) : undefined;
+  }
+
+  listApprovedFileRoots(): ApprovedFileRoot[] {
+    const rows = this.#database
+      .prepare('SELECT * FROM approved_file_roots ORDER BY managed DESC, display_name')
+      .all() as Record<string, unknown>[];
+    return rows.map((row) => this.#parseApprovedFileRoot(row));
+  }
+
+  upsertManagedArtifact(artifact: ManagedArtifact): void {
+    const valid = ManagedArtifactSchema.parse(artifact);
+    this.#database
+      .prepare(
+        `INSERT INTO managed_artifacts (
+           artifact_id, mission_id, name, type, path, created_at, source_json,
+           size, hash, verification_status, verification_details, creating_step_id,
+           version, parent_artifact_id, user_selected_output, deleted_at
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(artifact_id) DO UPDATE SET
+           name = excluded.name, path = excluded.path, size = excluded.size,
+           hash = excluded.hash, verification_status = excluded.verification_status,
+           verification_details = excluded.verification_details,
+           user_selected_output = excluded.user_selected_output,
+           deleted_at = excluded.deleted_at`,
+      )
+      .run(
+        valid.artifactId,
+        valid.missionId,
+        valid.name,
+        valid.type,
+        valid.path,
+        valid.createdAt,
+        JSON.stringify(valid.source),
+        valid.size,
+        valid.hash,
+        valid.verificationStatus,
+        valid.verificationDetails,
+        valid.creatingStepId ?? null,
+        valid.version,
+        valid.parentArtifactId ?? null,
+        valid.userSelectedOutput ? 1 : 0,
+        valid.deletedAt ?? null,
+      );
+  }
+
+  getManagedArtifact(artifactId: string): ManagedArtifact | undefined {
+    const row = this.#database
+      .prepare('SELECT * FROM managed_artifacts WHERE artifact_id = ?')
+      .get(artifactId) as Record<string, unknown> | undefined;
+    return row ? this.#parseManagedArtifact(row) : undefined;
+  }
+
+  listManagedArtifacts(input: ArtifactListInput): ManagedArtifact[] {
+    const where: string[] = [];
+    const values: (string | number)[] = [];
+    if (input.missionId) {
+      where.push('mission_id = ?');
+      values.push(input.missionId);
+    }
+    if (!input.includeDeleted) where.push('deleted_at IS NULL');
+    const sql = `SELECT * FROM managed_artifacts${where.length ? ` WHERE ${where.join(' AND ')}` : ''} ORDER BY created_at DESC, artifact_id DESC`;
+    const rows = this.#database.prepare(sql).all(...values) as Record<string, unknown>[];
+    return rows.map((row) => this.#parseManagedArtifact(row));
+  }
+
   transaction<T>(work: () => T): T {
     this.#database.exec('BEGIN IMMEDIATE');
     try {
@@ -1764,6 +1863,38 @@ export class JupiterDatabase
       idempotencyKey: row.idempotency_key,
       inputMetadata: this.#parseJson(row.input_metadata_json),
       outputMetadata: this.#parseJson(row.output_metadata_json),
+    });
+  }
+
+  #parseApprovedFileRoot(row: Record<string, unknown>): ApprovedFileRoot {
+    return ApprovedFileRootSchema.parse({
+      rootId: row.root_id,
+      displayName: row.display_name,
+      path: row.path,
+      writable: Number(row.writable) === 1,
+      managed: Number(row.managed) === 1,
+      approvedAt: row.approved_at,
+    });
+  }
+
+  #parseManagedArtifact(row: Record<string, unknown>): ManagedArtifact {
+    return ManagedArtifactSchema.parse({
+      artifactId: row.artifact_id,
+      missionId: row.mission_id,
+      name: row.name,
+      type: row.type,
+      path: row.path,
+      createdAt: row.created_at,
+      source: this.#parseJson(row.source_json),
+      size: Number(row.size),
+      hash: row.hash,
+      verificationStatus: row.verification_status,
+      verificationDetails: row.verification_details,
+      ...(row.creating_step_id === null ? {} : { creatingStepId: row.creating_step_id }),
+      version: Number(row.version),
+      ...(row.parent_artifact_id === null ? {} : { parentArtifactId: row.parent_artifact_id }),
+      userSelectedOutput: Number(row.user_selected_output) === 1,
+      ...(row.deleted_at === null ? {} : { deletedAt: row.deleted_at }),
     });
   }
 

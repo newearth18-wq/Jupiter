@@ -11,6 +11,7 @@
       "@jupiter/skill-runtime": ["../../services/skill-runtime/src/index.ts"],
       "@jupiter/agent-runtime": ["../../services/agent-runtime/src/index.ts"],
       "@jupiter/browser-runtime": ["../../services/browser-runtime/src/index.ts"],
+      "@jupiter/file-runtime": ["../../services/file-runtime/src/index.ts"],
       "@jupiter/security": ["../../packages/security/src/index.ts"],
       "@jupiter/contracts": ["../../packages/contracts/src/index.ts"],
       "@jupiter/core": ["../../packages/core/src/index.ts"],

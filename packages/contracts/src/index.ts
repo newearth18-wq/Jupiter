@@ -13,3 +13,4 @@ export * from './skill.js';
 export * from './permission.js';
 export * from './computer.js';
 export * from './browser.js';
+export * from './artifact.js';

@@ -30,6 +30,7 @@ type SmokeEvidence = {
       availability: string | null;
       computerState?: string | null;
       browserState?: string | null;
+      fileState?: string | null;
     }[];
     thaiText: { language: string; title: string | null; fits: boolean; lineHeight: string | null };
     focus: { trapped: boolean; restored: boolean };
@@ -47,6 +48,14 @@ type SmokeEvidence = {
       };
     };
     browser: { status: string; data?: { available: boolean; processIsolation: string } };
+    files: {
+      status: string;
+      data?: {
+        available: boolean;
+        supportedReadFormats: string[];
+        supportedCreateFormats: string[];
+      };
+    };
     denied: { status: string; error?: { category: string } };
     mission: {
       createStatus: string;
@@ -261,7 +270,7 @@ describe('packaged-shape Electron shell', () => {
     expect(evidence.renderer.diagnostics.status).toBe('success');
     expect(evidence.renderer.diagnostics.data?.database).toMatchObject({
       status: 'operational',
-      schemaVersion: 9,
+      schemaVersion: 10,
       integrity: 'ok',
     });
     expect(evidence.renderer.denied.status).toBe('error');
@@ -270,6 +279,13 @@ describe('packaged-shape Electron shell', () => {
       status: 'success',
       data: { available: true, processIsolation: 'dedicated-node-process' },
     });
+    expect(evidence.renderer.files).toMatchObject({
+      status: 'success',
+      data: { available: true },
+    });
+    expect(evidence.renderer.files.data?.supportedReadFormats).toEqual(
+      expect.arrayContaining(['txt', 'pdf', 'docx', 'pptx', 'xlsx']),
+    );
     expect(evidence.renderer.mission).toMatchObject({
       createStatus: 'success',
       cancelStatus: 'success',
@@ -343,8 +359,11 @@ describe('packaged-shape Electron shell', () => {
     expect(evidence.renderer.screens.find((screen) => screen.id === 'devices')?.browserState).toBe(
       'operational',
     );
+    expect(evidence.renderer.screens.find((screen) => screen.id === 'files')?.fileState).toBe(
+      'operational',
+    );
     const deferred = evidence.renderer.screens.filter((screen) =>
-      ['memory', 'files', 'automations', 'plugins'].includes(screen.id),
+      ['memory', 'automations', 'plugins'].includes(screen.id),
     );
     expect(deferred.every((screen) => screen.availability !== null)).toBe(true);
     expect(evidence.renderer.thaiText).toMatchObject({

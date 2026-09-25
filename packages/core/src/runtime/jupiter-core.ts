@@ -23,6 +23,13 @@ import {
   type NotepadDemoInput,
   type BrowserActionInput,
   type BrowserCancelInput,
+  type FileFindInput,
+  type DocumentReadInput,
+  type FileRootApproveInput,
+  type FileMutationInput,
+  type ArtifactListInput,
+  type ArtifactGenerateInput,
+  type ArtifactActionInput,
 } from '@jupiter/contracts';
 import { CapabilityDispatcher } from '../capabilities/capability-dispatcher.js';
 import { JupiterError } from '../errors/jupiter-error.js';
@@ -41,6 +48,7 @@ import type {
   PermissionRuntime,
   ComputerRuntime,
   BrowserRuntime,
+  FileArtifactRuntime,
 } from '../ports.js';
 import { RpcGateway } from '../rpc/rpc-gateway.js';
 import { ServiceManager, type ManagedService } from '../services/service-manager.js';
@@ -59,6 +67,7 @@ export type JupiterCoreDependencies = {
   permissionRuntime?: PermissionRuntime;
   computerRuntime?: ComputerRuntime;
   browserRuntime?: BrowserRuntime;
+  fileArtifactRuntime?: FileArtifactRuntime;
 };
 
 export class JupiterCore {
@@ -76,6 +85,7 @@ export class JupiterCore {
   readonly #permissionRuntime: PermissionRuntime | undefined;
   readonly #computerRuntime: ComputerRuntime | undefined;
   readonly #browserRuntime: BrowserRuntime | undefined;
+  readonly #fileArtifactRuntime: FileArtifactRuntime | undefined;
   #started = false;
 
   constructor(dependencies: JupiterCoreDependencies) {
@@ -91,6 +101,7 @@ export class JupiterCore {
     this.#permissionRuntime = dependencies.permissionRuntime;
     this.#computerRuntime = dependencies.computerRuntime;
     this.#browserRuntime = dependencies.browserRuntime;
+    this.#fileArtifactRuntime = dependencies.fileArtifactRuntime;
     this.#dispatcher = new CapabilityDispatcher();
     this.#gateway = new RpcGateway(this.#dispatcher, dependencies.auditRepository);
     this.#registerCapabilities();
@@ -135,6 +146,7 @@ export class JupiterCore {
       this.#permissionRuntime?.shutdown(),
       this.#computerRuntime?.shutdown(),
       this.#browserRuntime?.shutdown(),
+      this.#fileArtifactRuntime?.shutdown(),
       this.#missionRuntime?.shutdown(),
     ]);
   }
@@ -262,6 +274,41 @@ export class JupiterCore {
     if (this.#permissionRuntime) this.#registerPermissionCapabilities(this.#permissionRuntime);
     if (this.#computerRuntime) this.#registerComputerCapabilities(this.#computerRuntime);
     if (this.#browserRuntime) this.#registerBrowserCapabilities(this.#browserRuntime);
+    if (this.#fileArtifactRuntime)
+      this.#registerFileArtifactCapabilities(this.#fileArtifactRuntime);
+  }
+
+  #registerFileArtifactCapabilities(runtime: FileArtifactRuntime): void {
+    const register = (
+      capability: string,
+      handler: Parameters<CapabilityDispatcher['register']>[0]['handler'],
+    ): void =>
+      this.#dispatcher.register({
+        capability,
+        allowedActors: ['renderer', 'core', 'service', 'test'],
+        handler,
+      });
+    register('files.status.read', () => runtime.status());
+    register('files.roots.read', () => ({ roots: runtime.roots() }));
+    register('files.roots.approve', (input, context) =>
+      runtime.approveRoot(input as FileRootApproveInput, context.correlation.actor),
+    );
+    register('files.find', (input) => runtime.find(input as FileFindInput));
+    register('files.read', (input, context) =>
+      runtime.read(input as DocumentReadInput, context.signal),
+    );
+    register('files.mutate', (input, context) =>
+      runtime.mutate(input as FileMutationInput, context.correlation.actor),
+    );
+    register('artifacts.read', (input) => ({
+      artifacts: runtime.artifacts(input as ArtifactListInput),
+    }));
+    register('artifacts.generate', (input, context) =>
+      runtime.generate(input as ArtifactGenerateInput, context.correlation.actor, context.signal),
+    );
+    register('artifacts.action', (input, context) =>
+      runtime.act(input as ArtifactActionInput, context.correlation.actor),
+    );
   }
 
   #registerBrowserCapabilities(runtime: BrowserRuntime): void {

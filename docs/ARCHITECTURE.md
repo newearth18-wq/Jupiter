@@ -1,4 +1,4 @@
-# SET 0–8 architecture
+# SET 0–10 architecture
 
 ## Trust boundaries
 
@@ -9,7 +9,7 @@ React product shell (sandboxed, no Node)
   -> strict versioned schema validation
   -> Jupiter Core capability dispatcher
   -> central deny-by-default Permission Engine
-  -> provider-agnostic chat, durable Mission/Workflow, executable Skill, Windows Computer Agent, and Browser Agent runtime ports
+  -> provider-agnostic chat, durable Mission/Workflow, executable Skill, Windows/Browser Agent, and File/Artifact runtime ports
   -> dedicated short-lived Windows automation process (strict JSON, UI Automation/Win32)
   -> SQLite (WAL, foreign keys, migrations, transactions) + Windows DPAPI credential vault
 ```
@@ -19,9 +19,9 @@ The renderer cannot import Node.js, Electron, filesystem, shell, or credential A
 ## Repository boundaries
 
 - `apps/desktop`: Electron Main host gateway, DPAPI vault, narrow preload, localized React shell, service-backed screens, and Electron acceptance tests.
-- `packages/contracts`: strict schemas for bootstrap, Core RPC/events, diagnostics, UI preferences, routes, AI, Mission, Workflow, Skills, permissions, Computer Agent and Browser Agent actions/results, and transient stream events.
+- `packages/contracts`: strict schemas for bootstrap, Core RPC/events, diagnostics, UI preferences, routes, AI, Mission, Workflow, Skills, permissions, agents, files, documents, Office generation, managed artifacts, and transient stream events.
 - `packages/core`: provider-neutral capability dispatcher, RPC gateway, persistent event bus, service lifecycle isolation, typed errors, structured logging, and runtime ports. Core contains no provider-specific code.
-- `packages/database`: SQLite migrations and repositories for settings, ordered events, audit records, service health, AI metadata, conversations/messages, Mission/Workflow state, Skill definitions, permission state, and sanitized execution metadata.
+- `packages/database`: SQLite migrations and repositories for settings, ordered events, audit records, service health, AI metadata, conversations/messages, Mission/Workflow state, Skill definitions, permission state, approved file roots, and managed artifact metadata.
 - `packages/security`: central capability catalog and exact-match Permission Engine with deny-by-default authorization, one-time/session/persistent grants, revocation, and sanitized audit.
 - `packages/ui`: reusable Visual Design Lock tokens and accessible primitives for buttons, surfaces, status, empty states, tabs, dialogs, and toasts.
 - `services/ai-runtime`: dynamic provider registry, OpenAI-compatible adapter, capability/privacy model router, explicit fallback policy, and cancelable streaming chat orchestration.
@@ -30,11 +30,12 @@ The renderer cannot import Node.js, Electron, filesystem, shell, or credential A
 - `services/skill-runtime`: versioned executable registry, recursive schema validation, permission/time/health gates, cancellation, structured isolation of failures, sanitized history, four internal Skills, and Workflow executor adapters.
 - `services/agent-runtime`: permission-gated Windows Computer Agent with Generic Windows, Notepad, and File Explorer adapters, semantic UI Automation, constrained coordinate fallback, cancellation, crash containment, and verified local evidence.
 - `services/browser-runtime`: permission-gated Playwright Browser Agent with a persistent dedicated Node process, temporary-by-default profiles, semantic selectors, tabs/sessions, managed evidence and downloads, exact uploads, cancellation, untrusted-content signals, and cross-origin containment.
+- `services/file-runtime`: approved-root discovery and mutation, bounded document extraction, Office/PDF writers and structural validators, atomic no-overwrite persistence, per-Mission workspaces, artifact lineage/hash/verification, and host-mediated file actions.
 - Other reserved `services/*` and `plugins`: unavailable until their owning SETs.
 
 ## Product shell
 
-The custom Windows title-bar overlay and compact sidebar expose all twelve required destinations. Home, Chat, Missions, Skills, AI Models, Devices, Settings, and Diagnostics have live behavior. Other screens render localized truthful availability states. Devices exposes both real agent boundaries: Windows Computer Agent status/adapters/verified Notepad flow and Browser Agent status/session/navigation/read/cancel/history controls. The central Jupiter form retains the locked spherical core, orbital rings, restrained particles, and service-derived operational/degraded/offline state. Current Mission reads the latest durable Mission; controls are enabled only when the real state permits them.
+The custom Windows title-bar overlay and compact sidebar expose all twelve required destinations. Home, Chat, Missions, Skills, Files, AI Models, Devices, Settings, and Diagnostics have live behavior. Remaining screens render localized truthful availability states. Files exposes approved roots, real search/filter/sort results, document preview, managed artifacts, and permission-gated actions. Devices exposes both real agent boundaries: Windows Computer Agent status/adapters/verified Notepad flow and Browser Agent status/session/navigation/read/cancel/history controls. The central Jupiter form retains the locked spherical core, orbital rings, restrained particles, and service-derived operational/degraded/offline state. Current Mission reads the latest durable Mission; controls are enabled only when the real state permits them.
 
 ## AI provider and chat boundary
 
@@ -44,7 +45,7 @@ Renderer requests cross strict RPC schemas; only incremental, validated chat eve
 
 The router filters by requested capability and the active `AUTO`, `CLOUD`, `HYBRID`, or `LOCAL_ONLY` mode before any adapter request. `LOCAL_ONLY` excludes cloud providers at that boundary. Fallback is disabled, same-locality only, or restricted to an explicit approved-provider list; a used fallback is recorded as redacted Core event metadata. No eligible model returns a configuration error rather than generated content.
 
-Streaming deltas are transient UI events while completed, cancelled, or failed messages are durable. Stop Generation aborts the active request. Retry and edit/resend create new durable messages; conversation routing can override the global provider/model policy. Attachment references are typed for the future Artifact Manager, but the control remains disabled and labeled unavailable until that manager exists. Tool calls are displayed structurally and are not executed in SET 3.
+Streaming deltas are transient UI events while completed, cancelled, or failed messages are durable. Stop Generation aborts the active request. Retry and edit/resend create new durable messages; conversation routing can override the global provider/model policy. Attachment references are typed, but chat attachment dispatch remains disabled and labeled unavailable until a later SET wires it to the SET 10 Artifact Manager. Tool calls are displayed structurally and are not executed in SET 3.
 
 ## Localization and accessibility
 
@@ -66,7 +67,7 @@ Mission creation persists the actionable request immediately in `CREATED`. The f
 
 ## Persistence
 
-Schema migration 4 adds Missions, executions, transitions, steps, declared permissions, artifacts, errors, and verification results with foreign keys and deterministic ordering. Migration 6 adds Skill definitions, health, and sanitized execution metadata. Migration 7 adds central permission requests, durable grants/revocations, and target-hashed audit; session grants never enter SQLite. Migration 8 adds sanitized Computer Agent action results and verified artifact metadata. Migration 9 adds Browser Agent action/evidence/origin history; page text and extracted values are deliberately removed before persistence. Migration 3 provider/chat tables store no credential material. `ui.preferences` continues to store language, dark-theme variant, motion, avatar, density, text scale, and last view. Electron Main stores sanitized window bounds and maximized state under `ui.window-state`, validates them, and rejects off-screen restoration. Event cursors remain non-secret session state and prevent duplicate replay after renderer refresh.
+Schema migration 4 adds Missions, executions, transitions, steps, declared permissions, artifacts, errors, and verification results with foreign keys and deterministic ordering. Migration 6 adds Skill definitions, health, and sanitized execution metadata. Migration 7 adds central permission requests, durable grants/revocations, and target-hashed audit; session grants never enter SQLite. Migration 8 adds sanitized Computer Agent action results and verified artifact metadata. Migration 9 adds Browser Agent action/evidence/origin history; page text and extracted values are deliberately removed before persistence. Migration 10 adds approved file roots plus managed artifact source, path, size, SHA-256, verification, lineage/version, protection, and soft-delete metadata. Migration 3 provider/chat tables store no credential material. `ui.preferences` continues to store language, dark-theme variant, motion, avatar, density, text scale, and last view. Electron Main stores sanitized window bounds and maximized state under `ui.window-state`, validates them, and rejects off-screen restoration. Event cursors remain non-secret session state and prevent duplicate replay after renderer refresh.
 
 ## Workflow boundary
 
@@ -104,6 +105,14 @@ The typed action set includes application launch/close; focus/minimize/maximize/
 
 The real demonstration opens Windows Notepad, waits for its real window, writes `Hello Jupiter` through the document's UI Automation value pattern, drives the real Save As controls, verifies exact file content and SHA-256 metadata, then closes Notepad. No success is returned unless every action and artifact verification succeeds. Action history omits typed text, UI-tree contents, screenshot bytes, and permission target values.
 
+## File and Artifact boundary
+
+Files are visible only through the Jupiter-managed workspace or an explicit approved root. Inputs accept relative paths; absolute paths, `..` traversal, symlinks, junctions, and resolved scope escapes are rejected. Discovery uses real filesystem metadata and sorts before applying result limits. Mutations require an exact permission and never overwrite an existing destination implicitly.
+
+Document adapters accept TXT, Markdown, PDF, DOCX, PPTX, XLSX, CSV, and JSON with bounded input size and structured failures. Documents remain untrusted data and extracted text cannot grant permissions or execute instructions. Office/PDF writers validate generated package structure and requested content before an artifact becomes `VERIFIED`; writes use a same-volume temporary file and atomic no-overwrite publish. Each artifact records Mission, source, size, SHA-256, verification details, version, and optional parent lineage. User-selected outputs are protected from managed cleanup.
+
+Open, Reveal, Copy Path, and Delete use Electron Main host actions rather than renderer Node access. Delete is CRITICAL, exact-target, and moves the file through the host Recycle Bin action before soft-deleting metadata. Share returns `Unavailable` until an explicit destination integration exists.
+
 ## Deferred architecture
 
-External plugin loading/execution, Memory, Files/Artifact Manager, Automations, Identity Engine UI, native Windows notifications, and later agent expansion remain unavailable. SET 9 does not start the SET 10 Artifact Manager.
+External plugin loading/execution, Memory, Automations, Identity Engine UI, native Windows notifications, artifact sharing destinations, chat attachment dispatch, and later agent expansion remain unavailable. SET 10 does not start SET 11 Automation.
